@@ -1,0 +1,193 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+
+    --primary: 252 83% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 45.1%;
+
+    --accent: 252 83% 97%;
+    --accent-foreground: 252 56% 32%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 88%;
+    --ring: 252 83% 60%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+
+    --card: 240 8% 6.5%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 240 8% 6.5%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 252 92% 70%;
+    --primary-foreground: 252 90% 8%;
+
+    --secondary: 240 4.7% 13.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 4.7% 13.9%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 252 40% 15%;
+    --accent-foreground: 252 90% 84%;
+
+    --destructive: 0 62.8% 50.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 4.7% 15.9%;
+    --input: 240 4.7% 20%;
+    --ring: 252 92% 70%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply tracking-tight;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
+
+  *:focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
+  }
+}
+
+@layer utilities {
+  /* Faint engineering grid used behind hero/demo panels */
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.55) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.55) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  .mask-radial-fade {
+    -webkit-mask-image: radial-gradient(
+      ellipse 75% 60% at 50% 35%,
+      black 25%,
+      transparent 78%
+    );
+    mask-image: radial-gradient(
+      ellipse 75% 60% at 50% 35%,
+      black 25%,
+      transparent 78%
+    );
+  }
+
+  .mask-fade-edges-x {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent,
+      black 12%,
+      black 88%,
+      transparent
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      black 12%,
+      black 88%,
+      transparent
+    );
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ── Long-form content (legal, blog articles) ─────────────────────────── */
+.article-body > h2 {
+  @apply mt-12 scroll-mt-28 text-2xl font-semibold tracking-tight text-foreground;
+}
+.article-body > h3 {
+  @apply mt-8 scroll-mt-28 text-lg font-semibold tracking-tight text-foreground;
+}
+.article-body > p {
+  @apply mt-4 leading-7 text-muted-foreground;
+}
+.article-body > ul,
+.article-body > ol {
+  @apply mt-4 space-y-2.5 pl-5 leading-7 text-muted-foreground;
+}
+.article-body > ul {
+  @apply list-disc marker:text-muted-foreground/60;
+}
+.article-body > ol {
+  @apply list-decimal marker:text-muted-foreground/60;
+}
+.article-body strong {
+  @apply font-medium text-foreground;
+}
+.article-body a {
+  @apply font-medium text-primary underline-offset-4 hover:underline;
+}
+.article-body blockquote {
+  @apply mt-6 border-l-2 border-primary/50 pl-5 text-lg italic text-foreground/90;
+}
