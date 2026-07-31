@@ -46,6 +46,10 @@ Production + Preview unless noted). Names only — values live in Vercel's vault
 | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET` | Optional; GitHub OAuth |
 | `RESEND_API_KEY` | Optional; email delivery (console fallback without it) |
 | `EMAIL_FROM` | Optional; verified sender, e.g. `MoniClaw <no-reply@yourdomain.com>` |
+| `GEMINI_API_KEY` | Optional; env-fallback AI provider for workspaces without their own keys (AI Studio free tier) |
+| `OPENROUTER_API_KEY` | Optional; first failover provider (`:free` models stay $0) |
+| `OLLAMA_BASE_URL` | Optional; keyless self-hosted last resort |
+| `CRON_SECRET` | **Production-only.** Guards `GET /api/cron/memory-sweep` (Vercel Cron attaches it automatically). Changes require a redeploy to take effect — env vars bind at build time. Without it the route refuses with 503 (by design). |
 
 OAuth callback URLs to register with providers:
 
