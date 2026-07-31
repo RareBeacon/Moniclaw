@@ -243,6 +243,44 @@ async function main() {
   });
   report(badKey.status === 401, "GET /api/ai/usage rejects unknown msk_ key", `→ ${badKey.status}`);
 
+  console.log("\nAI Workers — dashboard guards (anonymous):");
+  for (const path of ["/dashboard/agents", "/dashboard/agents/new"]) {
+    const res = await get(path);
+    const location = res.headers.get("location") ?? "";
+    report(
+      (res.status === 302 || res.status === 307) && location.includes("/login"),
+      `${path} redirects to login`,
+      `${res.status}`
+    );
+  }
+
+  console.log("\nAI Workers REST API — unauthenticated rejection:");
+  for (const [method, path] of [
+    ["GET", "/api/agents"],
+    ["POST", "/api/agents"],
+    ["GET", "/api/agents/health"],
+    ["GET", "/api/agents/runs"],
+    ["POST", "/api/agents/00000000-0000-0000-0000-000000000000/dispatch"],
+    ["GET", "/api/agents/runs/00000000-0000-0000-0000-000000000000"],
+    ["POST", "/api/agents/runs/00000000-0000-0000-0000-000000000000/cancel"],
+    ["POST", "/api/agents/runs/00000000-0000-0000-0000-000000000000/resume"],
+    ["GET", "/api/agents/runs/00000000-0000-0000-0000-000000000000/events"],
+    ["GET", "/api/agents/runs/00000000-0000-0000-0000-000000000000/stream"],
+    ["POST", "/api/agents/tick"],
+  ]) {
+    try {
+      const res = await fetch(`${BASE}${path}`, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        ...(method === "POST" ? { body: "{}" } : {}),
+      });
+      // 401 (no principal / no cron secret) is the designed closed door.
+      report(res.status === 401, `${method} ${path} rejects anonymous`, `→ ${res.status}`);
+    } catch (error) {
+      report(false, `${method} ${path} rejects anonymous`, String(error));
+    }
+  }
+
   console.log("\n404 handling:");
   await expectStatus("unknown route 404s", "/definitely-not-a-page-9e3f", 404);
 
