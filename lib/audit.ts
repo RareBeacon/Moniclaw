@@ -74,6 +74,15 @@ export const AUDIT_ACTIONS = {
   browserUploadStore: "browser.upload.store",
   browserUploadDelete: "browser.upload.delete",
   browserScreenshotDelete: "browser.screenshot.delete",
+
+  // AI Workers (Phase 5)
+  agentRunDispatch: "agent.run.dispatch",
+  agentRunResume: "agent.run.resume",
+  agentRunCancel: "agent.run.cancel",
+  agentRunCanceled: "agent.run.canceled",
+  agentRunFailed: "agent.run.failed",
+  agentWorkerUpdate: "agent.worker.update",
+  agentTriggerTick: "agent.trigger.tick",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

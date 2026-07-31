@@ -76,5 +76,6 @@ export const RATE_LIMITS = {
   aiWorkflowRun: { limit: 30, windowMs: 60 * 60_000 }, // per workspace
   browserSession: { limit: 40, windowMs: 60 * 60_000 }, // per workspace (session creates)
   browserExecute: { limit: 150, windowMs: 60 * 60_000 }, // per workspace (executions+actions)
+  agentsRun: { limit: 60, windowMs: 60 * 60_000 }, // per workspace (worker dispatches)
   browserUpload: { limit: 30, windowMs: 60 * 60_000 }, // per workspace (file uploads)
 } as const;
