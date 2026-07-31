@@ -41,6 +41,15 @@ export type Action =
   | "settings.edit"
   | "billing.manage"
   | "apikeys.manage"
+  | "ai.chat"
+  | "ai.providers.manage"
+  | "ai.settings.manage"
+  | "ai.prompts.manage"
+  | "ai.memory.read"
+  | "ai.memory.write"
+  | "ai.memory.delete"
+  | "ai.workflows.manage"
+  | "ai.workflows.run"
   | "workspace.delete";
 
 const MIN_RANK: Record<Exclude<Action, "workspace.delete">, MembershipRole> = {
@@ -67,6 +76,15 @@ const MIN_RANK: Record<Exclude<Action, "workspace.delete">, MembershipRole> = {
   "settings.edit": "ADMIN",
   "billing.manage": "OWNER",
   "apikeys.manage": "ADMIN",
+  "ai.chat": "MEMBER",
+  "ai.providers.manage": "ADMIN",
+  "ai.settings.manage": "ADMIN",
+  "ai.prompts.manage": "MEMBER",
+  "ai.memory.read": "MEMBER",
+  "ai.memory.write": "MEMBER",
+  "ai.memory.delete": "MANAGER",
+  "ai.workflows.manage": "MEMBER",
+  "ai.workflows.run": "MEMBER",
 };
 
 /** Actions that no rank escalation may grant — owner identity only. */

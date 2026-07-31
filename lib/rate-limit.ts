@@ -70,4 +70,8 @@ export const RATE_LIMITS = {
   invite: { limit: 20, windowMs: 60 * 60_000 }, // per workspace
   upload: { limit: 30, windowMs: 60 * 60_000 }, // per user
   export: { limit: 12, windowMs: 60 * 60_000 }, // per workspace
+  aiChat: { limit: 60, windowMs: 60 * 60_000 }, // per user (messages)
+  aiEmbed: { limit: 60, windowMs: 60 * 60_000 }, // per workspace (documents/batches)
+  aiUpload: { limit: 20, windowMs: 60 * 60_000 }, // per workspace (documents)
+  aiWorkflowRun: { limit: 30, windowMs: 60 * 60_000 }, // per workspace
 } as const;

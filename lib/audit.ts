@@ -33,6 +33,28 @@ export const AUDIT_ACTIONS = {
   accountDelete: "user.account.delete",
   accountUnlink: "user.account.unlink",
   sessionsRevoke: "user.sessions.revoke",
+
+  // AI Runtime (Phase 3)
+  aiProviderCreate: "ai.provider.create",
+  aiProviderUpdate: "ai.provider.update",
+  aiProviderDelete: "ai.provider.delete",
+  aiProviderTest: "ai.provider.test",
+  aiSettingsUpdate: "ai.settings.update",
+  aiToolExecute: "ai.tool.execute",
+  aiToolError: "ai.tool.error",
+  aiPromptCreate: "ai.prompt.create",
+  aiPromptUpdate: "ai.prompt.update",
+  aiPromptPublish: "ai.prompt.publish",
+  aiPromptDelete: "ai.prompt.delete",
+  aiMemoryForget: "ai.memory.forget",
+  aiKnowledgeIngest: "ai.knowledge.ingest",
+  aiKnowledgeDelete: "ai.knowledge.delete",
+  aiWorkflowCreate: "ai.workflow.create",
+  aiWorkflowUpdate: "ai.workflow.update",
+  aiWorkflowRun: "ai.workflow.run",
+  aiWorkflowDelete: "ai.workflow.delete",
+  aiApiKeyCreate: "ai.apikey.create",
+  aiApiKeyRevoke: "ai.apikey.revoke",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

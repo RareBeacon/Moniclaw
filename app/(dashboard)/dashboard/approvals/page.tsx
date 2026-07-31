@@ -63,7 +63,7 @@ export default async function ApprovalsPage() {
                   >
                     <div>
                       <p className="font-medium">
-                        {approval.run.agent.name} wants to{" "}
+                        {approval.run ? approval.run.agent.name : "AI planner"} wants to{" "}
                         <span className="font-mono text-sm">{approval.actionType}</span>
                         {approval.amountUsd != null && (
                           <span className="font-semibold">

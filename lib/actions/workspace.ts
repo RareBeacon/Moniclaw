@@ -330,12 +330,18 @@ export async function decideApproval(
   if (denied) return { error: denied };
 
   const approval = await db.approval.findFirst({
-    where: { id: approvalId, status: "PENDING", run: { workspaceId: ctx.workspace.id } },
+    where: {
+      id: approvalId,
+      status: "PENDING",
+      // Run-derived approvals scope through the run; plan-derived (planner)
+      // approvals scope through their direct workspace link.
+      OR: [{ run: { workspaceId: ctx.workspace.id } }, { workspaceId: ctx.workspace.id }],
+    },
     include: { run: true },
   });
   if (!approval) return { error: "Approval not found or already decided." };
 
-  await db.$transaction([
+  const writes: import("@prisma/client").Prisma.PrismaPromise<unknown>[] = [
     db.approval.update({
       where: { id: approval.id },
       data: {
@@ -345,26 +351,31 @@ export async function decideApproval(
         note: note || null,
       },
     }),
-    db.runEvent.create({
-      data: {
-        runId: approval.runId,
-        type: "approval",
-        message: `${approval.actionType} ${decision.toLowerCase()} by ${ctx.user.name ?? ctx.user.email}`,
-        payload: note ? { note } : {},
-      },
-    }),
-    db.agentRun.update({
-      where: { id: approval.runId },
-      data: {
-        status:
-          decision === "APPROVED"
-            ? "RUNNING"
-            : approval.run.status === "NEEDS_APPROVAL"
-              ? "CANCELED"
-              : approval.run.status,
-      },
-    }),
-  ]);
+  ];
+  if (approval.runId && approval.run) {
+    writes.push(
+      db.runEvent.create({
+        data: {
+          runId: approval.runId,
+          type: "approval",
+          message: `${approval.actionType} ${decision.toLowerCase()} by ${ctx.user.name ?? ctx.user.email}`,
+          payload: note ? { note } : {},
+        },
+      }),
+      db.agentRun.update({
+        where: { id: approval.runId },
+        data: {
+          status:
+            decision === "APPROVED"
+              ? "RUNNING"
+              : approval.run.status === "NEEDS_APPROVAL"
+                ? "CANCELED"
+                : approval.run.status,
+        },
+      })
+    );
+  }
+  await db.$transaction(writes);
 
   await audit({
     workspaceId: ctx.workspace.id,
