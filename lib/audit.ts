@@ -55,6 +55,25 @@ export const AUDIT_ACTIONS = {
   aiWorkflowDelete: "ai.workflow.delete",
   aiApiKeyCreate: "ai.apikey.create",
   aiApiKeyRevoke: "ai.apikey.revoke",
+
+  // Computer Use Engine (Phase 4)
+  browserSessionCreate: "browser.session.create",
+  browserSessionClose: "browser.session.close",
+  browserSessionRecover: "browser.session.recover",
+  browserExecutionStart: "browser.execution.start",
+  browserExecutionCancel: "browser.execution.cancel",
+  browserExecutionFinish: "browser.execution.finish",
+  browserActionRisky: "browser.action.risky",
+  browserApprovalRequest: "browser.approval.request",
+  browserPolicyUpdate: "browser.policy.update",
+  browserSettingsUpdate: "browser.settings.update",
+  browserProfileCreate: "browser.profile.create",
+  browserProfileDelete: "browser.profile.delete",
+  browserDownloadIngest: "browser.download.ingest",
+  browserDownloadDelete: "browser.download.delete",
+  browserUploadStore: "browser.upload.store",
+  browserUploadDelete: "browser.upload.delete",
+  browserScreenshotDelete: "browser.screenshot.delete",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

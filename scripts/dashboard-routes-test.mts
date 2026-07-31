@@ -124,6 +124,28 @@ async function main() {
         tags: ["e2e"],
       },
     });
+    const browserSession = await db.browserSession.create({
+      data: {
+        workspaceId: workspace.id,
+        userId: owner.id,
+        status: "CLOSED",
+        currentUrl: "https://example.com",
+        currentTitle: "E2E provisioned session",
+        closedAt: new Date(),
+      },
+    });
+    const browserExecution = await db.browserExecution.create({
+      data: {
+        workspaceId: workspace.id,
+        userId: owner.id,
+        sessionId: browserSession.id,
+        status: "SUCCEEDED",
+        plan: { label: "E2E provisioned plan", steps: [] },
+        result: { status: "SUCCEEDED", progress: { completed: 0, total: 0 } },
+        startedAt: new Date(),
+        finishedAt: new Date(),
+      },
+    });
     report(true, "ephemeral workspace provisioned", "owner + viewer + records");
 
     // 2 · Owner session visits every dashboard route.
@@ -156,6 +178,16 @@ async function main() {
       ["/dashboard/prompts", "Prompt Manager"],
       ["/dashboard/workflows", "Workflow Builder"],
       ["/dashboard/ai-providers", "AI Providers"],
+      ["/dashboard/browser", "Browser Sessions"],
+      ["/dashboard/browser/live", "Live Execution"],
+      ["/dashboard/browser/recordings", "Recordings"],
+      [`/dashboard/browser/recordings/${browserExecution.id}`, "Recording detail"],
+      ["/dashboard/browser/history", "Execution History"],
+      ["/dashboard/browser/downloads", "Downloads"],
+      ["/dashboard/browser/uploads", "Uploads"],
+      ["/dashboard/browser/screenshots", "Screenshots"],
+      ["/dashboard/browser/permissions", "Browser Policy"],
+      ["/dashboard/browser/settings", "Engine Settings"],
     ];
 
     console.log("\nowner route sweep:");

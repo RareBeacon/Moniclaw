@@ -91,6 +91,8 @@ export function principalCan(principal: ApiPrincipal, action: Action): boolean {
       "approvals.read",
       "usage.read",
       "analytics.read",
+      "browser.read",
+      "browser.execute",
     ]);
     if (!keyAllowed.has(action)) return false;
   }
@@ -99,6 +101,7 @@ export function principalCan(principal: ApiPrincipal, action: Action): boolean {
     "ai.memory.write",
     "ai.workflows.run",
     "knowledge.write",
+    "browser.execute",
   ]);
   if (writeActions.has(action) && !principal.scopes.includes("write")) return false;
   if (!writeActions.has(action) && action !== "ai.chat" && !principal.scopes.includes("read")) return false;

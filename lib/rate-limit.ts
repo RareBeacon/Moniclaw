@@ -74,4 +74,7 @@ export const RATE_LIMITS = {
   aiEmbed: { limit: 60, windowMs: 60 * 60_000 }, // per workspace (documents/batches)
   aiUpload: { limit: 20, windowMs: 60 * 60_000 }, // per workspace (documents)
   aiWorkflowRun: { limit: 30, windowMs: 60 * 60_000 }, // per workspace
+  browserSession: { limit: 40, windowMs: 60 * 60_000 }, // per workspace (session creates)
+  browserExecute: { limit: 150, windowMs: 60 * 60_000 }, // per workspace (executions+actions)
+  browserUpload: { limit: 30, windowMs: 60 * 60_000 }, // per workspace (file uploads)
 } as const;

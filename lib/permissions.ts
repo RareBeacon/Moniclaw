@@ -50,6 +50,12 @@ export type Action =
   | "ai.memory.delete"
   | "ai.workflows.manage"
   | "ai.workflows.run"
+  | "browser.read"
+  | "browser.execute"
+  | "browser.profiles.manage"
+  | "browser.downloads.manage"
+  | "browser.settings.manage"
+  | "browser.policy.manage"
   | "workspace.delete";
 
 const MIN_RANK: Record<Exclude<Action, "workspace.delete">, MembershipRole> = {
@@ -85,6 +91,12 @@ const MIN_RANK: Record<Exclude<Action, "workspace.delete">, MembershipRole> = {
   "ai.memory.delete": "MANAGER",
   "ai.workflows.manage": "MEMBER",
   "ai.workflows.run": "MEMBER",
+  "browser.read": "VIEWER",
+  "browser.execute": "MEMBER",
+  "browser.profiles.manage": "MEMBER",
+  "browser.downloads.manage": "MANAGER",
+  "browser.settings.manage": "ADMIN",
+  "browser.policy.manage": "ADMIN",
 };
 
 /** Actions that no rank escalation may grant — owner identity only. */

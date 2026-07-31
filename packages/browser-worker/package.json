@@ -1,0 +1,17 @@
+{
+  "name": "@moniclaw/browser-worker",
+  "version": "4.0.0",
+  "private": true,
+  "description": "Remote Chromium worker for the MoniClaw Computer Use Engine (token-gated ws gateway).",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright-core": "1.49.1"
+  }
+}

@@ -14,6 +14,7 @@ import {
   createKnowledgeSearchTool,
   createMemoryRecallTool,
 } from "@runtime/tools/builtin/contextual";
+import { browserTools } from "./browser-registration";
 import { providerConfigSource } from "./settings";
 
 /**
@@ -54,6 +55,9 @@ export function getRuntime(): RuntimeContainer {
     .register(httpRequestTool)
     .register(createKnowledgeSearchTool(knowledge))
     .register(createMemoryRecallTool(memory));
+
+  // Phase 4: the Computer Use Engine is a Tool Provider in this same runtime.
+  for (const tool of browserTools()) tools.register(tool);
 
   const executor = new ToolExecutor(
     tools,

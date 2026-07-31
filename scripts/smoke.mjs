@@ -171,6 +171,72 @@ async function main() {
     }
   }
 
+  console.log("\nComputer Use — dashboard guards (anonymous):");
+  for (const path of [
+    "/dashboard/browser",
+    "/dashboard/browser/live",
+    "/dashboard/browser/recordings",
+    "/dashboard/browser/history",
+    "/dashboard/browser/downloads",
+    "/dashboard/browser/uploads",
+    "/dashboard/browser/screenshots",
+    "/dashboard/browser/permissions",
+    "/dashboard/browser/settings",
+  ]) {
+    const res = await get(path);
+    const location = res.headers.get("location") ?? "";
+    report(
+      (res.status === 302 || res.status === 307) && location.includes("/login"),
+      `${path} redirects to login`,
+      `${res.status}`
+    );
+  }
+
+  console.log("\nComputer Use REST API — unauthenticated rejection:");
+  for (const [method, path] of [
+    ["GET", "/api/browser/health"],
+    ["GET", "/api/browser/sessions"],
+    ["POST", "/api/browser/sessions"],
+    ["GET", "/api/browser/actions"],
+    ["POST", "/api/browser/actions"],
+    ["GET", "/api/browser/executions"],
+    ["POST", "/api/browser/executions"],
+    ["GET", "/api/browser/downloads"],
+    ["GET", "/api/browser/uploads"],
+    ["POST", "/api/browser/uploads"],
+    ["GET", "/api/browser/screenshots"],
+    ["GET", "/api/browser/logs"],
+    ["GET", "/api/browser/permissions"],
+    ["PUT", "/api/browser/permissions"],
+    ["GET", "/api/browser/settings"],
+    ["GET", "/api/browser/profiles"],
+    ["POST", "/api/browser/profiles"],
+    ["GET", "/api/browser/executions/00000000-0000-0000-0000-000000000000/stream"],
+    ["POST", "/api/browser/sessions/sweep"],
+  ]) {
+    try {
+      const res = await fetch(`${BASE}${path}`, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        ...(method === "POST" || method === "PUT" ? { body: "{}" } : {}),
+      });
+      // 401 (no principal / no cron secret) is the designed closed door.
+      report(res.status === 401, `${method} ${path} rejects anonymous`, `→ ${res.status}`);
+    } catch (error) {
+      report(false, `${method} ${path} rejects anonymous`, String(error));
+    }
+  }
+
+  console.log("\nComputer Use REST API — malformed bearer key:");
+  const badBrowserKey = await fetch(`${BASE}/api/browser/sessions`, {
+    headers: { Authorization: "Bearer msk_not_a_real_key" },
+  });
+  report(
+    badBrowserKey.status === 401,
+    "GET /api/browser/sessions rejects unknown msk_ key",
+    `→ ${badBrowserKey.status}`
+  );
+
   console.log("\nAI REST API — malformed bearer key:");
   const badKey = await fetch(`${BASE}/api/ai/usage`, {
     headers: { Authorization: "Bearer msk_not_a_real_key" },
