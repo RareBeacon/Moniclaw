@@ -21,7 +21,8 @@
     "paths": {
       "@/*": ["./*"],
       "@runtime/*": ["./packages/ai-runtime/*"],
-      "@cue/*": ["./packages/computer-use/*"]
+      "@cue/*": ["./packages/computer-use/*"],
+      "@agents/*": ["./packages/agent-runtime/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

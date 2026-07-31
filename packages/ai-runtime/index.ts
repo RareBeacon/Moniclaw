@@ -78,8 +78,10 @@ export {
   type Plan,
   type PlanStep,
   type PlanRunResult,
+  type PlanSnapshot,
   type StepTrace,
   type ApprovalGate,
+  type PlannerHooks,
 } from "./planner/planner";
 
 // Workflows

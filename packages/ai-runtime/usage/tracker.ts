@@ -19,6 +19,8 @@ export interface UsageRecord {
   usage?: Partial<UsageStats>;
   toolCallCount?: number;
   errorCode?: string;
+  /** Caller correlation id (Phase 5: "run:<agentRunId>") — additive. */
+  requestId?: string | null;
 }
 
 export class UsageTracker {
@@ -41,6 +43,7 @@ export class UsageTracker {
           costMicros: BigInt(entry.usage?.costMicros ?? 0),
           toolCallCount: entry.toolCallCount ?? 0,
           errorCode: entry.errorCode ?? null,
+          requestId: entry.requestId ?? null,
         },
       });
     } catch (error) {

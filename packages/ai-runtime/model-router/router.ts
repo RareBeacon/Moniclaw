@@ -63,6 +63,7 @@ export interface UsageSink {
     usage?: Partial<UsageStats>;
     toolCallCount?: number;
     errorCode?: string;
+    requestId?: string | null;
   }): Promise<void>;
 }
 
@@ -198,6 +199,7 @@ export class ModelRouter {
           await this.usage.record({
             workspaceId: ctx.workspaceId,
             userId: ctx.userId,
+            requestId: ctx.requestId ?? null,
             kind: "CHAT",
             status: "OK",
             provider: response.provider,
@@ -273,6 +275,7 @@ export class ModelRouter {
         await this.usage.record({
           workspaceId: ctx.workspaceId,
           userId: ctx.userId,
+            requestId: ctx.requestId ?? null,
           kind: "CHAT",
           status: "OK",
           provider: cfg.provider,
@@ -318,6 +321,7 @@ export class ModelRouter {
           await this.usage.record({
             workspaceId: ctx.workspaceId,
             userId: ctx.userId,
+            requestId: ctx.requestId ?? null,
             kind: "EMBEDDING",
             status: "OK",
             provider: response.provider,
@@ -333,6 +337,7 @@ export class ModelRouter {
           await this.usage.record({
             workspaceId: ctx.workspaceId,
             userId: ctx.userId,
+            requestId: ctx.requestId ?? null,
             kind: "EMBEDDING",
             status: "ERROR",
             provider: cfg.provider,
@@ -382,6 +387,7 @@ export class ModelRouter {
     await this.usage.record({
       workspaceId: ctx.workspaceId,
       userId: ctx.userId,
+            requestId: ctx.requestId ?? null,
       kind: "CHAT",
       status: "ERROR",
       provider: cfg.provider,

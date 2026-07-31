@@ -255,6 +255,14 @@ model Agent {
   schedule    String?
   policy      Json        @default("{}")
   skills      String[]    @default([])
+  // ── Phase 5 · AI Workers (all additive; Phase 2 semantics untouched) ──
+  workerType       String    @default("general") // general | research | ops
+  goal             String?   // natural-language objective the worker pursues
+  instructions     String?   // operator constraints above the worker's own judgment
+  toolPolicy       Json      @default("{}") // {allow?: string[], deny?: string[], allowDelegation?: bool}
+  budget           Json      @default("{}") // {maxSteps, maxTokens, maxCostMicros, maxDurationMs, maxConcurrentRuns, maxDepth}
+  lastScheduledAt  DateTime? // last cron dispatch (schedule due-evaluation)
+  runCount         Int       @default(0)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   deletedAt   DateTime?
@@ -300,13 +308,30 @@ model AgentRun {
   error         String?
   createdAt     DateTime  @default(now())
 
+  // ── Phase 5 · run orchestration (all additive) ──
+  parentRunId     String?
+  depth           Int      @default(0) // delegation nesting; cap from budget
+  plan            Json?    // validated planner decomposition
+  progress        Json?    // {nextIndex, trace summary} checkpoint for resume
+  budgetSnapshot  Json?    // resolved budget at dispatch (immutable per run)
+  idempotencyKey  String?  // deduplicates dispatch (unique with agentId; NULLs allowed)
+  output          Json?    // worker result (report, citations, artifacts)
+  errorClass      String?
+  cancelRequested Boolean  @default(false)
+  tokensUsed      Int      @default(0)
+  stepsExecuted   Int      @default(0)
+
   agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent    AgentRun?  @relation("RunDelegation", fields: [parentRunId], references: [id], onDelete: SetNull)
+  children  AgentRun[] @relation("RunDelegation")
   events    RunEvent[]
   approvals Approval[]
 
   @@index([workspaceId, status, createdAt])
   @@index([agentId, createdAt])
+  @@index([parentRunId])
+  @@unique([agentId, idempotencyKey], name: "agentRunIdempotency")
   @@map("agent_runs")
 }
 
@@ -757,6 +782,7 @@ model AiUsageEvent {
   costMicros       BigInt      @default(0)
   toolCallCount    Int         @default(0)
   errorCode        String?
+  requestId        String? // caller correlation ("run:<agentRunId>" for worker calls)
   createdAt        DateTime    @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -765,6 +791,7 @@ model AiUsageEvent {
   @@index([workspaceId, createdAt])
   @@index([workspaceId, provider, createdAt])
   @@index([workspaceId, kind, createdAt])
+  @@index([workspaceId, requestId])
   @@map("ai_usage_events")
 }
 
