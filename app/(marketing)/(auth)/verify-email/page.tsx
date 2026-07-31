@@ -9,6 +9,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// This page hosts a server-action form — keep it server-rendered so
+// progressive-enhancement (no-JS) POSTs reach the runtime instead of the CDN.
+export const dynamic = "force-dynamic";
+
 export default async function VerifyEmailPage({
   searchParams,
 }: {

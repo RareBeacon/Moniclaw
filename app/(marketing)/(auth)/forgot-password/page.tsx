@@ -8,6 +8,10 @@ export const metadata: Metadata = {
   description: "Request a secure password reset link for your MoniClaw account.",
 };
 
+// This page hosts a server-action form — keep it server-rendered so
+// progressive-enhancement (no-JS) POSTs reach the runtime instead of the CDN.
+export const dynamic = "force-dynamic";
+
 export default function ForgotPasswordPage() {
   return (
     <AuthShell

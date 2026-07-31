@@ -14,8 +14,13 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Direct (unpooled) endpoint — used by Prisma CLI (migrate/introspect) so
+  // migrations never traverse a connection pooler (e.g. Neon PgBouncer).
+  // The Vercel Neon integration injects both vars; for a non-pooled local
+  // database, set DATABASE_URL_UNPOOLED to the same value as DATABASE_URL.
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 // ── Identity (Auth.js) ────────────────────────────────────────────────

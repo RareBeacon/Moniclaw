@@ -8,6 +8,10 @@ export const metadata: Metadata = {
   description: "Sign in to your MoniClaw workspace.",
 };
 
+// This page hosts a server-action form — keep it server-rendered so
+// progressive-enhancement (no-JS) POSTs reach the runtime instead of the CDN.
+export const dynamic = "force-dynamic";
+
 export default function LoginPage() {
   return (
     <AuthShell
