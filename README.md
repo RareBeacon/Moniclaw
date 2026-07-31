@@ -157,6 +157,66 @@ and the AI Runtime is a *consumer*, not a dependency.
   (quick actions + plan runner + live SSE stream), Recordings (+replay page),
   History, Downloads, Uploads, Screenshots, Policy editor, Engine Settings.
 
+### Agent Runtime — AI Workers (Phase 5 — complete)
+
+The Agent Runtime (`packages/agent-runtime/`) turns an Agent into an
+autonomous **worker**: given a goal it plans, executes with tools (incl. the
+MCUE browser), respects budgets and human gates, and files replayable
+evidence. It builds **on** the Phase-2 data model and the Phase-3 planner /
+tool executor — the migration is strictly additive (`workerType`, `goal`,
+`instructions`, `toolPolicy`, `budget` on Agent; `plan`, `progress`,
+`budgetSnapshot`, `idempotencyKey`, `output`, `errorClass`, `parentRunId`,
+`depth`, `tokensUsed`, `stepsExecuted` on AgentRun; `requestId` on
+AiUsageEvent). Everything sits behind ports (`packages/agent-runtime/ports.ts`)
+with Prisma adapters in `repositories/prisma.ts` — no planner, SDK or SQL
+imports in the orchestrator.
+
+- **Worker orchestration core** (`orchestrator.ts`) — dispatch (202,
+  idempotency key, per-agent concurrency cap, forced-SHADOW for shadow
+  agents) → queue → hydrate → Phase-3 planner run with per-step budget
+  metering and kill-switch polling → optional approval parking → resume from
+  the persisted plan snapshot → output synthesis → finish. Aborted runs map
+  to typed error classes (`agent_unavailable`, `budget_exceeded`,
+  `cancelled`, `upstream_failed`, …) with an HTTP status table.
+- **Trigger engine** (`cron.ts`) — manual, webhook/event seams, and POSIX
+  5-field crons (dom/dow OR rule, dow 7→0). `GET|POST /api/agents/tick`
+  (CRON_SECRET bearer; Vercel Cron invokes GET hourly) dispatches due workers with
+  per-minute idempotency keys, reaps zombie RUNNING rows past their own
+  wall-clock budget (serverless freeze safety — runs always terminate), and
+  rescues QUEUED rows whose dispatch was lost (at-most-once via the status
+  transition guard).
+- **Serverless survival** — the in-process queue registers its drain with
+  Vercel `waitUntil`, so background runs outlive the HTTP response (bounded
+  by the route `maxDuration`; anything longer is checkpointed and reaped /
+  requeued by the tick sweeps). A distributed queue (BullMQ/SQS) plugs into
+  the same `AgentQueuePort`.
+- **Worker archetypes** (`research.ts`, `policy.ts`) — research workers
+  browse → extract → search knowledge → file a structured **cited report**
+  (`ResearchSynthesizer`, non-fatal fallback to the planner reflection);
+  ops/general archetypes carry their own preambles and default tool
+  allowlists. The `PolicyToolRegistry` layers per-worker allow/deny/delegation
+  policy UNDER the workspace tool permissions — deny always wins.
+- **Human-in-the-loop** — steps park on the workspace Approval table
+  (`agent.step.approval`, run-linked) and resume after decision; MCUE
+  confirmation domains reuse the same gates; per-run step/token/cost/wall-clock
+  budgets cap every execution; the promote ladder (DRAFT → SHADOW →
+  SUPERVISED → AUTONOMOUS) stays operator-controlled.
+- **Multi-agent seams** (`delegation.ts`) — the `agent_delegate` capability
+  tool delegates through the `DelegationHandle` interface only: depth cap,
+  cycle guard, per-child 50% budget share, parent/child lineage (`SET NULL`
+  on delete) and `delegatedRuns` in the parent output. No hardwired topology.
+- **Honest failure** — a workspace without model keys sees runs terminate
+  `FAILED / upstream_failed` (never `internal`, never stuck): the local E2E
+  asserts exactly this posture; a provider-backed workspace gets real reports.
+- **REST API** `/api/agents/*` — agents CRUD, dispatch, runs (+cancel,
+  +resume, +events cursor, +SSE stream), tick, health. Envelope/guard/rate
+  idioms mirror the browser surface.
+- **Dashboard** — agent detail page (run form with goal override,
+  budget/tool-policy/trigger config editor, recent runs), run detail page
+  (token/step/depth facts, cited report + reflection + step digest +
+  delegation links, **kill switch** and resume-after-decision controls),
+  worker fields in the new-agent form.
+
 ### Permission model (rank-based RBAC)
 
 `VIEWER < MEMBER < MANAGER < ADMIN < OWNER` — each capability declares a
@@ -236,6 +296,7 @@ values:
 | `MCUE_SERVERLESS_CHROMIUM` | — | `1` switches local launches to `@sparticuz/chromium` (AWS Lambda-style hosts; **not** Vercel — use a browser worker there) |
 | `MCUE_POOL_MAX_PROCESSES` | — | Browser process pool size (default 4) |
 | `MCUE_POOL_IDLE_MS` | — | Idle process TTL before reaping (default 120000) |
+| `AGENT_QUEUE_CONCURRENCY` | — | Concurrent worker runs per process (default 2) |
 
 \* On Vercel, host trust is automatic; set it anyway for preview/prod parity if
 you run the same build elsewhere.
@@ -253,9 +314,11 @@ npm test             # unit: platform + crypto vault, safe-expression parser,
                      # chunker, prompt renderer, model-router failover/retry/cancel,
                      # tool executor policy, workflow graphs (incl. loop/condition),
                      # planner, usage math, MCUE domain policy, selector scoring,
-                     # action catalog contract, plan gating, recovery decisions
-npm run test:integration  # runtime + MCUE repositories vs real Postgres+pgvector
-                          # (skips cleanly without DATABASE_URL)
+                     # action catalog contract, plan gating, recovery decisions,
+                     # worker cron parser, budget meter, tool policy, orchestrator
+                     # lifecycle (dispatch→park→resume→reap), error taxonomy
+npm run test:integration  # runtime + MCUE + agent repositories vs real
+                          # Postgres+pgvector (skips cleanly without DATABASE_URL)
 npm run test:cue          # live-Chromium engine suites: 13 scenario tests
                           # (session→plan→recording→files→profiles→pool) +
                           # 7 recovery tests (self-heal, retries, dialogs,
@@ -268,10 +331,14 @@ npm run test:perf         # hot-path fences: chunker 100KB, 30-node workflow,
                           # 10k renders/evals
 
 # end-to-end (need a running server; the two DB suites also need DATABASE_URL)
-npm run smoke        # HTTP checks: routes, middleware guards, headers, auth API, AI surfaces
+npm run smoke        # HTTP checks: routes, middleware guards, headers, auth API,
+                     # AI + browser + agents anon-401 surfaces
 npm run test:auth    # real sign-in, wrong-password, audit events, session rotation
 npm run test:routes  # all dashboard routes + dynamic details + RBAC negative
 npm run test:flows   # email flows (verification/reset, console-fallback aware)
+npm run test:agents  # AI Workers REST: create→promote→dispatch→terminal,
+                     # idempotency, kill switch, SSE, RBAC, scheduler tick
+                     # (27 checks; honest upstream_failed without model keys)
 ```
 
 The smoke suite is database-aware: without a reachable `DATABASE_URL` its
@@ -297,6 +364,8 @@ app/
   api/browser/            Phase 4 REST surface (sessions, actions, executions,
                           downloads, uploads, screenshots, logs, replay,
                           permissions, settings, profiles, health, SSE stream)
+  api/agents/             Phase 5 REST surface (agents CRUD, dispatch, runs
+                          +cancel/+resume/+events/SSE stream, tick, health)
   api/cron/               memory-sweep (Vercel Cron, CRON_SECRET-guarded)
 packages/computer-use/  the Computer Use Runtime (no Next.js imports):
   browser-engine/       driver contract, playwright driver, process pool
@@ -308,6 +377,9 @@ packages/computer-use/  the Computer Use Runtime (no Next.js imports):
   sessions/ recording/ downloads/ uploads/ cookies/ profiles/ vision/ audit/
   repositories/         Prisma adapters behind repository interfaces
 packages/browser-worker/ remote-browser sidecar (token-gated WS + Dockerfile)
+packages/agent-runtime/ the AI Worker orchestrator (no Next.js imports):
+                        ports, orchestrator, cron, budgets, tool policy,
+                        research archetypes, delegation seam, Prisma adapters
 packages/ai-runtime/    the provider-agnostic brain (no Next.js imports):
   providers/            ChatProvider/EmbeddingProvider contracts + gemini,
                         openai-compatible (OpenRouter…), ollama adapters
@@ -442,6 +514,38 @@ Executions parked on a confirmation domain return `AWAITING_APPROVAL` with an
 `POST /api/browser/executions/<id>/resume` continues the plan from the parked
 step. Downloads flagged by the heuristic scanner stay `HELD` — the `/file`
 route refuses to serve them until released (Manager+, audited).
+
+## REST API — AI Workers (Phase 5)
+
+All endpoints under `/api/agents/*`, same `{ ok, data | error }` envelope and
+session/`msk_…` auth as `/api/ai/*` (RBAC actions `agents.read/create/run`).
+
+```bash
+# create a research worker (starts DRAFT; promote to take runs)
+curl -X POST $HOST/api/agents -H "Content-Type: application/json" \
+  -d '{"name":"Pricing Scout","description":"Weekly competitor pricing digest for the strategy team.","workerType":"research","goal":"Map the pricing pages of our top five competitors and file a cited report."}'
+
+# dispatch (202; idempotencyKey deduplicates retries safely)
+curl -X POST $HOST/api/agents/<id>/dispatch -H "Content-Type: application/json" \
+  -d '{"idempotencyKey":"weekly-2026-W32","mode":"LIVE"}'
+
+# follow the evidence (cursor) or stream it
+curl "$HOST/api/agents/runs/<runId>/events?limit=200"
+curl -N $HOST/api/agents/runs/<runId>/stream        # SSE: event/status/end frames
+
+# kill switch / resume after a human decision
+curl -X POST $HOST/api/agents/runs/<runId>/cancel
+curl -X POST $HOST/api/agents/runs/<runId>/resume
+
+# scheduler heartbeat (Vercel Cron hourly via GET; POST also accepted
+# for external schedulers; also reaps zombie runs and rescues dispatches)
+curl -X POST $HOST/api/agents/tick -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Worker budgets (`maxSteps`, `maxTokens`, `maxCostMicros`, `maxDurationMs`,
+`maxConcurrentRuns`, `maxDepth`) are enforced mid-run at the spend boundary
+and post-hoc at synthesis; breach → `FAILED / budget_exceeded` (HTTP 402).
+Runs parked on a human gate return `NEEDS_APPROVAL` with an Approval row.
 
 ## Data-layer conventions
 

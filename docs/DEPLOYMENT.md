@@ -49,7 +49,7 @@ Production + Preview unless noted). Names only — values live in Vercel's vault
 | `GEMINI_API_KEY` | Optional; env-fallback AI provider for workspaces without their own keys (AI Studio free tier) |
 | `OPENROUTER_API_KEY` | Optional; first failover provider (`:free` models stay $0) |
 | `OLLAMA_BASE_URL` | Optional; keyless self-hosted last resort |
-| `CRON_SECRET` | **Production-only.** Guards `GET /api/cron/memory-sweep` (Vercel Cron attaches it automatically). Changes require a redeploy to take effect — env vars bind at build time. Without it the route refuses with 503 (by design). |
+| `CRON_SECRET` | **Production-only.** Guards `GET /api/cron/memory-sweep` and `POST /api/agents/tick` (Vercel Cron attaches it automatically; both routes refuse without it — 503/401 by design). Changes require a redeploy to take effect — env vars bind at build time. |
 
 OAuth callback URLs to register with providers:
 
@@ -69,6 +69,17 @@ npx vercel deploy --prod
 Or import the GitHub repo in the Vercel dashboard — zero-config; the build is
 `next build` (lint + type checks run inside it) and the output is detected
 automatically (`postinstall` runs `prisma generate`).
+
+**Cron entries** (`vercel.json`):
+
+- `GET /api/cron/memory-sweep` — daily 04:00 UTC (Phase 3).
+- `/api/agents/tick` — hourly at :15 (Phase 5). Vercel Cron invokes it with
+  GET; POST is accepted for external schedulers doing finer cadences.
+  Evaluates due cron workers, reaps zombie runs and rescues lost dispatches.
+  Vercel plans only allow interval requests up to their cron frequency
+  limits — if a tighter cadence is needed (e.g. every minute), call the same
+  endpoint from an external scheduler with the `CRON_SECRET` bearer; the
+  route is idempotent and minute-safe.
 
 ## 5 · Database migrations (run once per release, after env vars exist)
 
