@@ -62,6 +62,12 @@ model User {
   workflowRunsCreated      WorkflowRun[]
   apiKeysCreated           ApiKey[]
 
+  // Computer Use Engine (Phase 4)
+  browserProfilesCreated BrowserProfile[]
+  browserSessions        BrowserSession[]
+  browserExecutions      BrowserExecution[]
+  browserUploads         BrowserUpload[]
+
   @@index([deletedAt])
   @@map("users")
 }
@@ -163,6 +169,14 @@ model Workspace {
   workflowRuns       WorkflowRun[]
   apiKeys            ApiKey[]
   planApprovals      Approval[]
+
+  // Computer Use Engine (Phase 4)
+  browserSettings      BrowserWorkspaceSettings?
+  browserPolicy        BrowserPolicy?
+  browserProfiles      BrowserProfile[]
+  browserSessions      BrowserSession[]
+  browserExecutions    BrowserExecution[]
+  browserBinaries      BrowserBinary[]
 
   @@index([deletedAt])
   @@map("workspaces")
@@ -833,3 +847,320 @@ model ApiKey {
   @@index([workspaceId, revokedAt])
   @@map("api_keys")
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// Phase 4 — MoniClaw Computer Use Engine (MCUE)
+// ══════════════════════════════════════════════════════════════════════════
+
+enum BrowserKind {
+  CHROMIUM
+  CHROME // google-chrome channel (where installed)
+  MSEDGE // microsoft-edge channel (where installed)
+  FIREFOX // playwright firefox build (where supported)
+}
+
+enum BrowserMode {
+  HEADLESS
+  HEADED
+}
+
+enum BrowserSessionKind {
+  EPHEMERAL // destroyed at close (default)
+  PERSISTENT // bound to a BrowserProfile (cookies + storage persist)
+  INCOGNITO // isolated context, no persistence, cookie writes session-local
+}
+
+enum BrowserSessionStatus {
+  STARTING
+  ACTIVE
+  IDLE
+  RECOVERING // driver reconnect / context recovery in flight
+  CLOSED
+  ERROR
+  TIMEOUT
+}
+
+enum BrowserExecutionStatus {
+  QUEUED
+  PLANNING
+  RUNNING
+  VALIDATING
+  RETRYING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  AWAITING_APPROVAL // parked on a confirmation-required domain or JS step
+}
+
+enum BrowserActionStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  RECOVERED // succeeded through a recovery strategy (healed selector etc.)
+}
+
+/// Per-workspace engine defaults (edits flow from the Browser Settings page).
+model BrowserWorkspaceSettings {
+  workspaceId            String   @id
+  defaultBrowser         BrowserKind @default(CHROMIUM)
+  headless               Boolean  @default(true)
+  actionTimeoutMs        Int      @default(30000)
+  executionTimeoutMs     Int      @default(120000)
+  sessionIdleTimeoutSec  Int      @default(600)
+  maxConcurrentSessions  Int      @default(3)
+  dialogPolicy           String   @default("dismiss") // dismiss | accept
+  screenshotOnFail       Boolean  @default(true)
+  recordScreenshots      Boolean  @default(true)
+  maxArtifactMB          Int      @default(25)
+  updatedById            String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("browser_workspace_settings")
+}
+
+/// Per-workspace permission policy (edits flow from the Permissions page).
+/// Domain lists support exact hosts and one-level wildcards (*.example.com);
+/// policy evaluation order: blocked > confirmation > allowed > defaultAllowed.
+model BrowserPolicy {
+  workspaceId         String   @id
+  readOnly            Boolean  @default(false) // extraction/capture only
+  navigationOnly      Boolean  @default(false) // + navigate family
+  allowJavascript     Boolean  @default(false) // execute_js action gate
+  allowDownloads      Boolean  @default(true)
+  allowUploads        Boolean  @default(true)
+  allowClipboard      Boolean  @default(false)
+  allowedDomains      String[] @default([])
+  blockedDomains      String[] @default([])
+  confirmationDomains String[] @default([]) // risky — require human approval
+  defaultAllowed      Boolean  @default(true)
+  updatedById         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("browser_policies")
+}
+
+/// Reusable browser profiles — cookies + web storage encrypted at rest
+/// (AES-256-GCM vault, same construction as provider BYOK keys).
+model BrowserProfile {
+  id              String       @id @default(uuid())
+  workspaceId     String
+  name            String
+  description     String?
+  browser         BrowserKind  @default(CHROMIUM)
+  userAgent       String?
+  viewport        Json? // {width, height}
+  storageStateEnc String? // encrypted playwright storageState JSON
+  createdById     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  sessions  BrowserSession[]
+
+  @@index([workspaceId, deletedAt])
+  @@map("browser_profiles")
+}
+
+/// Live browser sessions. The driver process itself may be a pooled local
+/// browser, a shared remote worker (BROWSER_WS_ENDPOINT), or a serverless
+/// ephemeral — `endpoint` records which.
+model BrowserSession {
+  id             String               @id @default(uuid())
+  workspaceId    String
+  userId         String?
+  profileId      String?
+  browser        BrowserKind          @default(CHROMIUM)
+  mode           BrowserMode          @default(HEADLESS)
+  kind           BrowserSessionKind   @default(EPHEMERAL)
+  status         BrowserSessionStatus @default(STARTING)
+  endpoint       String? // "local" | ws endpoint of the owning worker
+  currentUrl     String?
+  currentTitle   String?
+  tabCount       Int                  @default(1)
+  activeTab      Int                  @default(0)
+  lastError      String?
+  idleExpiresAt  DateTime?
+  lastActivityAt DateTime             @default(now())
+  createdById    String?
+  createdAt      DateTime             @default(now())
+  closedAt       DateTime?
+
+  workspace  Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user       User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  profile    BrowserProfile?   @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  executions BrowserExecution[]
+
+  @@index([workspaceId, status, lastActivityAt])
+  @@map("browser_sessions")
+}
+
+/// A unit of computer-use work: goal → planned steps → queue → execute →
+/// validate → retry → terminal state. Steps live in `plan` (validated JSON);
+/// the audit trail lives in BrowserActionEvent rows.
+model BrowserExecution {
+  id           String                 @id @default(uuid())
+  workspaceId  String
+  userId       String?
+  sessionId    String
+  goal         String?
+  status       BrowserExecutionStatus @default(QUEUED)
+  plan         Json? // [{seq, action, args, selector?}] validated at queue time
+  result       Json? // {outputs: {seq: value}, summary?}
+  error        String?
+  approvalId   String? // parked-approval link (plan/risky domain/JS)
+  stepCount    Int                  @default(0)
+  failedStep   Int?
+  attempts     Int                  @default(0)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime             @default(now())
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  session   BrowserSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  events    BrowserActionEvent[]
+  recording BrowserRecording?
+  downloads BrowserDownload[]
+  screenshots BrowserScreenshot[]
+
+  @@index([workspaceId, status, createdAt])
+  @@index([sessionId, createdAt])
+  @@map("browser_executions")
+}
+
+/// One row per action attempt — the recording trail, the audit log, and the
+/// replay source of truth. seq + attempt reproduce the exact timeline.
+model BrowserActionEvent {
+  id          String             @id @default(uuid())
+  executionId String
+  workspaceId String // denormalized for tenant-scoped reads
+  seq         Int
+  action      String // action definition id, e.g. "navigate" | "click"
+  selector    Json? // normalized SelectorSpec actually used (after healing)
+  args        Json?
+  status      BrowserActionStatus
+  attempt     Int                @default(1)
+  durationMs  Int?
+  error       String?
+  screenshotId String?
+  healedFrom  Json? // original selector when self-healing succeeded
+  metadata    Json?
+  createdAt   DateTime           @default(now())
+
+  execution BrowserExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, seq, attempt])
+  @@index([workspaceId, createdAt])
+  @@map("browser_action_events")
+}
+
+/// Compact replay metadata per execution (frames reference screenshots).
+model BrowserRecording {
+  id           String   @id @default(uuid())
+  executionId  String   @unique
+  workspaceId  String
+  steps        Int      @default(0)
+  screenshots  Int      @default(0)
+  errors       Int      @default(0)
+  retries      Int      @default(0)
+  durationMs   Int      @default(0)
+  timeline     Json     // [{seq, action, status, at, durationMs, screenshotId?, url?}]
+  createdAt    DateTime @default(now())
+
+  execution BrowserExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("browser_recordings")
+}
+
+/// Raw binary store for engine artifacts (screenshots, PDFs, downloads,
+/// upload payloads). Capped per workspace settings (default 25MB); the
+/// BinaryStore port documents the S3/R2 seam for bucket-backed deployments.
+model BrowserBinary {
+  id          String   @id @default(uuid())
+  workspaceId String
+  sha256      String
+  mime        String
+  sizeBytes   Int
+  data        Bytes
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  downloads   BrowserDownload[]
+  uploads     BrowserUpload[]
+  screenshots BrowserScreenshot[]
+
+  @@index([workspaceId, sha256])
+  @@map("browser_binaries")
+}
+
+model BrowserDownload {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  sessionId     String?
+  executionId   String?
+  filename      String
+  suggestedName String
+  mime          String
+  sizeBytes     Int
+  sha256        String
+  binaryId      String
+  scanStatus    String   @default("PENDING") // PENDING | CLEAN | HELD (scanner port)
+  scanDetail    String?
+  createdAt     DateTime @default(now())
+
+  binary    BrowserBinary     @relation(fields: [binaryId], references: [id], onDelete: Cascade)
+  execution BrowserExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@map("browser_downloads")
+}
+
+model BrowserUpload {
+  id          String   @id @default(uuid())
+  workspaceId String
+  uploaderId  String?
+  filename    String
+  mime        String
+  sizeBytes   Int
+  sha256      String
+  binaryId    String
+  usedCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  deletedAt   DateTime?
+
+  binary   BrowserBinary @relation(fields: [binaryId], references: [id], onDelete: Cascade)
+  uploader User?         @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@map("browser_uploads")
+}
+
+model BrowserScreenshot {
+  id          String   @id @default(uuid())
+  workspaceId String
+  sessionId   String?
+  executionId String?
+  kind        String   @default("AUTO") // AUTO | MANUAL | FAILURE | STEP
+  binaryId    String
+  width       Int?
+  height      Int?
+  createdAt   DateTime @default(now())
+
+  binary    BrowserBinary     @relation(fields: [binaryId], references: [id], onDelete: Cascade)
+  execution BrowserExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@map("browser_screenshots")
+}
+
+// BrowserBinary back-relations live on the artifact tables above.
