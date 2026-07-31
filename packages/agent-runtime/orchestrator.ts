@@ -453,8 +453,9 @@ export class WorkerOrchestrator implements DelegationHandle {
     return this.deps.runs.getInternal(runId);
   }
 
-  private composeGoal(agent: { goal: string | null; instructions: string | null; workerType: string | null }, override?: string, data?: Record<string, unknown>): string {
-    const core = (override ?? agent.goal ?? "").trim();
+  private composeGoal(agent: { goal: string | null; instructions: string | null; workerType: string | null; description?: string | null }, override?: string, data?: Record<string, unknown>): string {
+    // Legacy Phase-2 agents carry their brief in `description` — always runnable.
+    const core = (override ?? agent.goal ?? agent.description ?? "").trim();
     if (!core) return "";
     const parts: string[] = [];
     const preamble = preambleFor(String(agent.workerType ?? "general"));

@@ -66,6 +66,5 @@
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.23.1",
     "typescript": "^5.5.4"
-  },
-  "test": "node --import tsx --test tests/permissions.test.ts tests/rate-limit.test.ts tests/validations.test.ts tests/format.test.ts"
+  }
 }

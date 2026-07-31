@@ -74,14 +74,27 @@ export default async function AgentsPage() {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="font-semibold">{agent.name}</h2>
+                    <h2 className="font-semibold">
+                      <Link
+                        href={`/dashboard/agents/${agent.id}`}
+                        className="transition-colors hover:text-primary"
+                      >
+                        {agent.name}
+                      </Link>
+                    </h2>
                     <StatusBadge status={agent.status} kind="agent" />
+                    <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
+                      {agent.workerType} worker
+                    </span>
                   </div>
                   <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-muted-foreground">
                     {agent.description}
                   </p>
                   <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[0.7rem] text-muted-foreground">
                     <span>trigger: {agent.trigger.toLowerCase()}</span>
+                    {agent.trigger === "SCHEDULE" && agent.schedule && (
+                      <span>cron: {agent.schedule}</span>
+                    )}
                     <span>runs: {agent._count.runs}</span>
                     <span>budget: ${policy?.budgets?.dailyUsd ?? 25}/day</span>
                     <span>

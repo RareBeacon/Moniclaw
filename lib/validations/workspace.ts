@@ -14,6 +14,10 @@ export const createAgentSchema = z.object({
     .max(2000),
   trigger: z.enum(["MANUAL", "SCHEDULE", "WEBHOOK"]),
   schedule: z.string().trim().max(60).optional(),
+  // Phase 5 worker fields (optional at hire-time; editable later).
+  workerType: z.enum(["general", "research", "ops"]).default("general"),
+  goal: z.string().trim().max(4000).optional(),
+  instructions: z.string().trim().max(4000).optional(),
 });
 
 export const agentStatusSchema = z.enum([

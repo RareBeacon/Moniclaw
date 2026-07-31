@@ -149,12 +149,15 @@ export async function createAgent(
     description: formData.get("description"),
     trigger: formData.get("trigger"),
     schedule: formData.get("schedule") || undefined,
+    workerType: formData.get("workerType") || "general",
+    goal: formData.get("goal") || undefined,
+    instructions: formData.get("instructions") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Check your inputs." };
   }
 
-  const { name, category, description, trigger, schedule } = parsed.data;
+  const { name, category, description, trigger, schedule, workerType, goal, instructions } = parsed.data;
   if (trigger === "SCHEDULE" && !schedule) {
     return { error: "Scheduled agents need a cron expression." };
   }
@@ -181,6 +184,9 @@ export async function createAgent(
       trigger,
       schedule: trigger === "SCHEDULE" ? schedule : null,
       status: "DRAFT",
+      workerType,
+      goal: goal || null,
+      instructions: instructions || null,
       policy: {
         approvals: [{ when: "amount > 0", to: ctx.user.email }],
         budgets: { dailyUsd: 25 },
@@ -285,28 +291,32 @@ export async function startRun(agentId: string): Promise<ActionState> {
     return { error: "Promote the agent out of DRAFT (shadow mode is the first step) before running it." };
   }
 
-  const run = await db.agentRun.create({
-    data: {
-      agentId: agent.id,
+  // Phase 5: the execution plane is live — dispatch through the worker
+  // orchestrator (budgets, tool policy, event trail, real execution).
+  let runId: string;
+  try {
+    const { getAgentRuntime } = await import("@/lib/agents/runtime");
+    const runtime = getAgentRuntime();
+    const { run } = await runtime.orchestrator.dispatch({
       workspaceId: ctx.workspace.id,
-      mode: agent.status === "SHADOW" ? "SHADOW" : "LIVE",
-      status: "QUEUED",
+      agentId: agent.id,
+      byUserId: ctx.user.id,
       triggerSource: "manual",
-      events: {
-        create: {
-          type: "note",
-          message: `Run queued by ${ctx.user.name ?? ctx.user.email}. The runner fleet picks up queued runs as the execution plane rolls out.`,
-        },
-      },
-    },
-  });
+      // Legacy Phase-2 agents carry their brief in `description` — always runnable.
+      ...(agent.goal ? {} : { goal: agent.description }),
+    });
+    runId = run.id;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Could not queue the run.";
+    return { error: message };
+  }
 
   await audit({
     workspaceId: ctx.workspace.id,
     actorId: ctx.user.id,
     action: AUDIT_ACTIONS.agentRun,
     targetType: "run",
-    targetId: run.id,
+    targetId: runId,
     metadata: { agent: agent.name, mode: agent.status === "SHADOW" ? "SHADOW" : "LIVE" },
   });
 

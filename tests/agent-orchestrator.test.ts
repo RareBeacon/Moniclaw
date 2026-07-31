@@ -329,13 +329,20 @@ test("unknown agent / missing goal / DRAFT agent are refused up front", async ()
   const h = makeHarness();
   await assert.rejects(() => h.orch.dispatch({ workspaceId: WS, agentId: "nope" }), (e) => (e as AgentError).kind === "not_found");
 
-  const goalLess = h.agents.add({ id: "a-nogoal", workspaceId: WS, slug: "nogoal", goal: null });
+  // No goal column AND no description (pre-Phase-2 shape) → still refused.
+  const goalLess = h.agents.add({ id: "a-nogoal", workspaceId: WS, slug: "nogoal", goal: null, description: "" });
   await assert.rejects(() => h.orch.dispatch({ workspaceId: WS, agentId: goalLess.id }), (e) => (e as AgentError).kind === "validation");
 
   const draft = h.agents.add({ id: "a-draft", workspaceId: WS, slug: "drafty", status: "DRAFT" });
   await assert.rejects(() => h.orch.dispatch({ workspaceId: WS, agentId: draft.id }), (e) => (e as AgentError).kind === "agent_unavailable");
 
-  // Goal override works for goalless agents.
+  // Legacy compat: a Phase-2 agent with only a description runs on it as the goal.
+  const legacy = h.agents.add({ id: "a-legacy", workspaceId: WS, slug: "legacy", goal: null });
+  const { run: legacyRun } = await h.orch.dispatch({ workspaceId: WS, agentId: legacy.id });
+  await drainQueue(h);
+  assert.equal((await h.runs.get(WS, legacyRun.id))!.status, "SUCCEEDED");
+
+  // Goal override always wins.
   const { run } = await h.orch.dispatch({ workspaceId: WS, agentId: goalLess.id, goal: "Ad-hoc task" });
   await drainQueue(h);
   assert.equal((await h.runs.get(WS, run.id))!.status, "SUCCEEDED");

@@ -23,9 +23,28 @@ const categories = [
   { value: "executive", label: "Executive Ops" },
 ];
 
+const workerTypes = [
+  {
+    value: "general",
+    label: "General worker",
+    hint: "Runs a plan against any enabled tools.",
+  },
+  {
+    value: "research",
+    label: "Research worker",
+    hint: "Browses, extracts, and files a cited report.",
+  },
+  {
+    value: "ops",
+    label: "Ops worker",
+    hint: "Operational runbooks and system actions.",
+  },
+];
+
 export function NewAgentForm() {
   const [state, formAction] = useFormState(createAgent, initialState);
   const [trigger, setTrigger] = React.useState("MANUAL");
+  const [workerType, setWorkerType] = React.useState("general");
   const [description, setDescription] = React.useState("");
   const [errors, setErrors] = React.useState<{ name?: string; description?: string; schedule?: string }>({});
   const [pending, setPending] = React.useState(false);
@@ -91,6 +110,26 @@ export function NewAgentForm() {
       </div>
 
       <div className="space-y-2">
+        <Label htmlFor="agent-worker-type">Worker type</Label>
+        <select
+          id="agent-worker-type"
+          name="workerType"
+          value={workerType}
+          onChange={(e) => setWorkerType(e.target.value)}
+          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {workerTypes.map((type) => (
+            <option key={type.value} value={type.value}>
+              {type.label}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted-foreground">
+          {workerTypes.find((type) => type.value === workerType)?.hint}
+        </p>
+      </div>
+
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="agent-description">Job description</Label>
           <span className="text-xs text-muted-foreground">
@@ -112,6 +151,39 @@ export function NewAgentForm() {
         {errors.description && (
           <p role="alert" className="text-xs text-destructive">{errors.description}</p>
         )}
+      </div>
+
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="agent-goal">
+            Standing goal{" "}
+            <span className="font-normal text-muted-foreground">(optional)</span>
+          </Label>
+          <Textarea
+            id="agent-goal"
+            name="goal"
+            maxLength={4000}
+            placeholder={
+              workerType === "research"
+                ? "e.g. Every week, map the pricing pages of our five top competitors and file a cited report."
+                : "The objective every run pursues. Overrides of a run can refine it."
+            }
+            className="min-h-[100px]"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="agent-instructions">
+            Operator instructions{" "}
+            <span className="font-normal text-muted-foreground">(optional)</span>
+          </Label>
+          <Textarea
+            id="agent-instructions"
+            name="instructions"
+            maxLength={4000}
+            placeholder="Constraints above the worker's own judgment: house style, escalation rules, data sources to prefer or avoid…"
+            className="min-h-[100px]"
+          />
+        </div>
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
