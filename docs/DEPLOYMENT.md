@@ -73,13 +73,13 @@ automatically (`postinstall` runs `prisma generate`).
 **Cron entries** (`vercel.json`):
 
 - `GET /api/cron/memory-sweep` — daily 04:00 UTC (Phase 3).
-- `/api/agents/tick` — hourly at :15 (Phase 5). Vercel Cron invokes it with
-  GET; POST is accepted for external schedulers doing finer cadences.
-  Evaluates due cron workers, reaps zombie runs and rescues lost dispatches.
-  Vercel plans only allow interval requests up to their cron frequency
-  limits — if a tighter cadence is needed (e.g. every minute), call the same
-  endpoint from an external scheduler with the `CRON_SECRET` bearer; the
-  route is idempotent and minute-safe.
+- `/api/agents/tick` — daily 04:45 UTC (Phase 5). Vercel Cron invokes it
+  with GET; POST is accepted for external schedulers. Hobby plans only allow
+  daily crons — for a finer cadence (e.g. every minute), schedule the same
+  endpoint externally with the `CRON_SECRET` bearer; the route is idempotent
+  and minute-safe (per-minute cron dispatch keys), so overlapping calls are
+  harmless. The tick evaluates due cron workers, reaps zombie runs and
+  rescues lost dispatches.
 
 ## 5 · Database migrations (run once per release, after env vars exist)
 

@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/agents/tick",
-      "schedule": "15 * * * *"
+      "schedule": "45 4 * * *"
     }
   ]
 }

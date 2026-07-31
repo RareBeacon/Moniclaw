@@ -180,7 +180,8 @@ imports in the orchestrator.
   `cancelled`, `upstream_failed`, …) with an HTTP status table.
 - **Trigger engine** (`cron.ts`) — manual, webhook/event seams, and POSIX
   5-field crons (dom/dow OR rule, dow 7→0). `GET|POST /api/agents/tick`
-  (CRON_SECRET bearer; Vercel Cron invokes GET hourly) dispatches due workers with
+  (CRON_SECRET bearer; Vercel Cron daily 04:45 UTC on Hobby — finer cadences
+  via any external scheduler, the route is idempotent) dispatches due workers with
   per-minute idempotency keys, reaps zombie RUNNING rows past their own
   wall-clock budget (serverless freeze safety — runs always terminate), and
   rescues QUEUED rows whose dispatch was lost (at-most-once via the status
@@ -537,8 +538,8 @@ curl -N $HOST/api/agents/runs/<runId>/stream        # SSE: event/status/end fram
 curl -X POST $HOST/api/agents/runs/<runId>/cancel
 curl -X POST $HOST/api/agents/runs/<runId>/resume
 
-# scheduler heartbeat (Vercel Cron hourly via GET; POST also accepted
-# for external schedulers; also reaps zombie runs and rescues dispatches)
+# scheduler heartbeat (Vercel Cron daily via GET on Hobby; POST idempotent —
+# run it every minute from any external scheduler for a finer cadence)
 curl -X POST $HOST/api/agents/tick -H "Authorization: Bearer $CRON_SECRET"
 ```
 
