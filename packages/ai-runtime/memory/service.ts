@@ -202,10 +202,14 @@ export class MemoryService {
     return result.count;
   }
 
+  /**
+   * Keep the top-`maxRecords` memories (importance first, newest as the
+   * tiebreak) and delete the overflow — i.e. the LEAST valuable records go.
+   */
   async purgeBeyondLimit(workspaceId: string, maxRecords: number): Promise<number> {
     const overflow = await this.db.memoryRecord.findMany({
       where: { workspaceId },
-      orderBy: [{ importance: "asc" }, { createdAt: "asc" }],
+      orderBy: [{ importance: "desc" }, { createdAt: "desc" }],
       select: { id: true },
       skip: maxRecords,
     });

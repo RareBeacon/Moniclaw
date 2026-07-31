@@ -302,7 +302,9 @@ export class WorkflowExecutor {
             case "condition": {
               const expr = render(node.config.expression)
                 .replace(/\bAND\b/gi, "&&").replace(/\bOR\b/gi, "||")
-                .replace(/=/g, "==").replace(/====/g, "==")
+                // Bare assignment-style "=" → comparison, without mangling
+                // >=, <=, ==, !=, or SQL-style "<>".
+                .replace(/(?<![<>=!])=(?![=])/g, "==")
                 .replace(/<>/g, "!=");
               // Evaluate as arithmetic/comparison via the safe parser: supports
               // a > b | a >= b | a < b | a <= b | a == b | a != b
@@ -313,17 +315,21 @@ export class WorkflowExecutor {
               break;
             }
             case "loop": {
+              // `times` counts BODY iterations: the body arm fires exactly
+              // `times` times, then one final visit routes the exit arm
+              // (the iteration variable keeps its last value).
               const remaining = loopRemaining.get(node.id) ?? node.config.times;
-              const iteration = node.config.times - remaining + 1;
-              variables[node.config.saveAs] = iteration;
-              if (remaining <= 1) {
+              if (remaining <= 0) {
                 loopRemaining.delete(node.id);
                 edgeFilter = "false"; // exit arm
+                record.output = { exit: true };
               } else {
+                const iteration = node.config.times - remaining + 1;
+                variables[node.config.saveAs] = iteration;
                 loopRemaining.set(node.id, remaining - 1);
                 edgeFilter = "true"; // body arm
+                record.output = { iteration, remaining: loopRemaining.get(node.id) ?? 0 };
               }
-              record.output = { iteration, remaining: loopRemaining.get(node.id) ?? 0 };
               break;
             }
             case "wait": {

@@ -44,13 +44,13 @@ const GRAPH_TEMPLATE = JSON.stringify(
         config: {
           system: "You are a precise operations analyst. Use the recalled context when relevant.",
           message:
-            "Topic: {{input.topic}}\n\nRecalled context:\n{{recall.results}}\n\nWrite a three-sentence briefing.",
+            "Topic: {{input.topic}}\n\nRecalled context:\n{{recall.content}}\n\nWrite a three-sentence briefing.",
         },
       },
       {
         id: "done",
         type: "output",
-        config: { template: "{{draft.text}}" },
+        config: { template: "{{draft.content}}" },
       },
     ],
     edges: [

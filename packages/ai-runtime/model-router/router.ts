@@ -73,6 +73,12 @@ export interface RouterOptions {
   baseBackoffMs?: number; // default 400
   attemptTimeoutMs?: number; // default 60_000
   cacheProviders?: boolean; // default true (per-process adapter cache)
+  /**
+   * Override adapter construction (tests, custom in-house adapters).
+   * When set, the provider registry is bypassed for chat / embeddings.
+   */
+  chatAdapterFactory?: (cfg: ResolvedProviderConfig) => ChatProvider;
+  embedAdapterFactory?: (cfg: ResolvedProviderConfig) => EmbeddingProvider;
 }
 
 export interface RoutedRequestContext {
@@ -112,6 +118,7 @@ export class ModelRouter {
 
   /** Instantiate (or fetch cached) a chat adapter for a resolved config. */
   private chatAdapter(cfg: ResolvedProviderConfig): ChatProvider {
+    if (this.options.chatAdapterFactory) return this.options.chatAdapterFactory(cfg);
     const key = `${cfg.provider}:${cfg.apiKey ? cfg.apiKey.slice(-6) : ""}:${cfg.baseUrl ?? ""}:${cfg.defaultModel ?? ""}`;
     const cached = this.adapterCache.get(key);
     if (cached && this.options.cacheProviders !== false) return cached;
@@ -125,6 +132,7 @@ export class ModelRouter {
   }
 
   private embedAdapter(cfg: ResolvedProviderConfig): EmbeddingProvider {
+    if (this.options.embedAdapterFactory) return this.options.embedAdapterFactory(cfg);
     const key = `embed:${cfg.provider}:${cfg.apiKey ? cfg.apiKey.slice(-6) : ""}:${cfg.baseUrl ?? ""}:${cfg.defaultModel ?? ""}`;
     const cached = this.embedderCache.get(key);
     if (cached && this.options.cacheProviders !== false) return cached;
