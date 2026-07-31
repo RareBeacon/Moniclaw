@@ -120,7 +120,39 @@ Manual pass:
 - [ ] `/definitely-not-a-page` → branded 404
 - [ ] force an error (temporary throw in a page) → branded error boundary, then remove
 
-## 8 · Custom domain + security notes
+## 8 · Browser worker (Computer Use Engine)
+
+Vercel serverless functions cannot ship a full Chromium (bundle + memory
+limits), so production browser sessions run on a dedicated worker. The app
+degrades honestly without one: session creation fails with a typed
+`browser_unavailable` error (HTTP 409) and the dashboard shows the engine as
+not configured — every other surface keeps working.
+
+```bash
+# 1 · run the worker anywhere containers live (Fly.io, Railway, Render, VPS)
+docker build -t moniclaw-browser-worker packages/browser-worker
+docker run -d --name browser-worker \
+  -e BROWSER_WORKER_TOKEN="$(openssl rand -hex 32)" \
+  -e PORT=4310 -e WORKER_BROWSER=chromium -e WORKER_HEADLESS=1 \
+  -p 4310:4310 moniclaw-browser-worker
+
+# 2 · health:  GET http://<worker-host>:4310/healthz  → {"ok":true,...}
+
+# 3 · point the app at it (redeploy required — env binds at build/deploy time)
+vercel env add BROWSER_WS_ENDPOINT production   # wss://<worker-host> (or ws:// on private net)
+vercel env add BROWSER_WORKER_TOKEN production  # same token as the worker
+vercel deploy --prod
+```
+
+- The worker exposes **one** token-gated WebSocket endpoint; the token travels
+  on the `x-mcue-token` upgrade header (constant-time compared). Put it behind
+  TLS (or a private network) in production.
+- One worker process hosts many sessions; scale horizontally and shard by
+  workspace if needed (pool is per-worker).
+- Local development needs nothing of this: sessions launch on the local
+  Playwright Chromium (`npx playwright install chromium`).
+
+## 9 · Custom domain + security notes
 
 - Attach the domain in Vercel → Domains; HTTPS is automatic.
 - All cookies are `HttpOnly`, `SameSite=Lax`, and `__Secure-`-prefixed on HTTPS.

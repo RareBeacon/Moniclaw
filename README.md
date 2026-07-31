@@ -103,6 +103,60 @@ injection.
   tool permissions), Knowledge documents section, AI usage section, API Keys
   (create-once-show, revoke).
 
+### Computer Use Engine (Phase 4 — complete)
+
+The MoniClaw Computer Use Engine (**MCUE**, `packages/computer-use/`) is a
+complete Computer Use Runtime — not browser automation glue. It gives AI
+workers a governed, observable, recoverable browser. Everything runs through
+interfaces (ports) with dependency injection; the engine never imports Next.js
+and the AI Runtime is a *consumer*, not a dependency.
+
+- **Browser engine** — Playwright driver over a process pool (Chromium /
+  Chrome / Edge / Firefox, headless or headed), local or remote
+  (`packages/browser-worker`, token-gated WebSocket, Dockerfile included);
+  per-session isolation with ephemeral or persistent encrypted profiles.
+- **38 universal actions** (`navigate` → `wait_for_navigation`, incl. tabs,
+  mouse, keyboard, scroll, DOM extraction, screenshots, PDF, cookies, files,
+  gated `execute_javascript`) — each declares its permission tier, risk class,
+  zod arg schema, `execute()` and where meaningful `rollback()`.
+- **Selector engine** — 8 strategies (testid, aria, role+name, label,
+  placeholder, text, css, xpath) scored by stability; **self-healing**: when a
+  selector dies the engine probes the page, ranks candidates and retries with
+  the best match (`healedFrom` trail persisted).
+- **Recovery** — decision table per failure class: bounded retry →
+  refresh-and-retry → dialog auto-handling (dismiss/accept per policy) →
+  browser relaunch on crash/detach → approval parking for confirmation
+  domains → clean failure. RECOVERED is a first-class execution outcome.
+- **Workspace policy** — readOnly / navigationOnly tiers, blocked /
+  confirmation / allowed domain lists (default-deny capable), JavaScript
+  execution, download (heuristic scanner HELDs executables and scriptable
+  docs) and upload gates, per-artifact caps, concurrent-session quota.
+  Confirmation domains park executions `AWAITING_APPROVAL` and bridge into
+  the workspace Approval table.
+- **Execution pipeline** — goal → zod-validated plan (fail-fast on policy
+  violations) → FIFO queue (bounded concurrency) → per-step execution with
+  event trail → post-validation → status. Every step emits a
+  `BrowserActionEvent` (the replay source of truth); recordings stitch steps
+  + screenshots into a timeline.
+- **Observability** — ring-buffer event log, per-execution SSE stream
+  (`/api/browser/executions/[id]/stream`), replay API, 17 `browser.*` audit
+  actions, engine health endpoint (pool/queue/capabilities).
+- **Vision baseline** — layout maps from the accessibility/DOM probe and
+  pixel-diff (pixelmatch) with a 10×10 change heat grid; OCR and multimodal
+  model seams exist as ports for Phase 5 wiring.
+- **AI Runtime integration** — the engine is a Tool Provider
+  (`browser_session_create/close/status/execute/extract/screenshot`)
+  registered alongside knowledge/memory tools, decoupled behind interfaces.
+- **REST API** `/api/browser/*` — sessions, actions, executions (+cancel,
+  +resume, events, stream, replay), downloads (+file, quarantined content
+  refused), uploads (staging), screenshots (+image), logs, permissions,
+  settings, profiles, health; session or `msk_…` key auth
+  (`browser.read` / `browser.execute` scopes), per-workspace rate limits
+  (40 sessions / 150 executions / 30 uploads per hour).
+- **Dashboard** — Computer Use section: Sessions, Live Execution console
+  (quick actions + plan runner + live SSE stream), Recordings (+replay page),
+  History, Downloads, Uploads, Screenshots, Policy editor, Engine Settings.
+
 ### Permission model (rank-based RBAC)
 
 `VIEWER < MEMBER < MANAGER < ADMIN < OWNER` — each capability declares a
@@ -113,6 +167,10 @@ never grant them.
 |---|---|
 | agents.read · approvals.read · knowledge.read · files.read · usage.read · analytics.read · members.read | Viewer |
 | agents.create · agents.run · knowledge.write · files.export · ai.chat · ai.prompts.manage · ai.memory.read/write · ai.workflows.manage/run | Member |
+| browser.read (sessions, recordings, screenshots, health) | Viewer |
+| browser.execute (sessions, actions, executions) · browser.profiles.manage | Member |
+| browser.downloads.manage (delete/quarantine release) | Manager |
+| browser.settings.manage · browser.policy.manage | Admin |
 | agents.promote · agents.archive · approvals.decide · knowledge.delete · files.delete · audit.read · ai.memory.delete | Manager |
 | members.invite · members.role · members.remove · settings.edit · apikeys.manage · ai.providers.manage · ai.settings.manage | Admin |
 
@@ -170,8 +228,14 @@ values:
 | `GEMINI_API_KEY` | — | Env-fallback chat + embeddings provider (workspaces prefer their own BYOK keys) |
 | `OPENROUTER_API_KEY` | — | First failover provider (`:free` models keep it at $0) |
 | `OLLAMA_BASE_URL` | — | Self-hosted keyless last-resort provider |
-| `CRON_SECRET` | — | Guards `GET /api/cron/memory-sweep` (route refuses when unset) |
+| `CRON_SECRET` | — | Guards `GET /api/cron/memory-sweep` and `POST /api/browser/sessions/sweep` (routes refuse when unset) |
 | `DATABASE_URL_UNPOOLED` | ✓† | Direct endpoint for Prisma CLI migrations (Neon integration injects both) |
+| `BROWSER_WS_ENDPOINT` | — | Remote browser worker (`wss://host:4310`); without it sessions run on the local Chromium |
+| `BROWSER_WORKER_TOKEN` | —* | Shared token for the remote browser worker (required by the worker; client side when `BROWSER_WS_ENDPOINT` is set) |
+| `PLAYWRIGHT_BROWSERS_PATH` | — | Chromium install path for local sessions (default `~/.cache/ms-playwright`) |
+| `MCUE_SERVERLESS_CHROMIUM` | — | `1` switches local launches to `@sparticuz/chromium` (AWS Lambda-style hosts; **not** Vercel — use a browser worker there) |
+| `MCUE_POOL_MAX_PROCESSES` | — | Browser process pool size (default 4) |
+| `MCUE_POOL_IDLE_MS` | — | Idle process TTL before reaping (default 120000) |
 
 \* On Vercel, host trust is automatic; set it anyway for preview/prod parity if
 you run the same build elsewhere.
@@ -185,12 +249,21 @@ npm run typecheck    # TypeScript
 npm run lint         # ESLint (also enforced during `next build`)
 npx prisma validate  # schema check
 
-npm test             # unit (82): platform + crypto vault, safe-expression parser,
+npm test             # unit: platform + crypto vault, safe-expression parser,
                      # chunker, prompt renderer, model-router failover/retry/cancel,
                      # tool executor policy, workflow graphs (incl. loop/condition),
-                     # planner, usage math
-npm run test:integration  # runtime repositories vs real Postgres+pgvector (9; skips
-                          # cleanly without DATABASE_URL)
+                     # planner, usage math, MCUE domain policy, selector scoring,
+                     # action catalog contract, plan gating, recovery decisions
+npm run test:integration  # runtime + MCUE repositories vs real Postgres+pgvector
+                          # (skips cleanly without DATABASE_URL)
+npm run test:cue          # live-Chromium engine suites: 13 scenario tests
+                          # (session→plan→recording→files→profiles→pool) +
+                          # 7 recovery tests (self-heal, retries, dialogs,
+                          # approval parking, session quotas)
+npm run test:cue:security # policy tiers, domain gates, artifact caps,
+                          # cross-workspace isolation, encryption at rest
+# scripts/cue-perf-test.mts — engine latency budgets (pool reuse, navigation,
+# screenshot, extraction)
 npm run test:perf         # hot-path fences: chunker 100KB, 30-node workflow,
                           # 10k renders/evals
 
@@ -212,13 +285,29 @@ app/
   (dashboard)/dashboard/ authenticated app: overview, agents, runs, approvals,
                          knowledge (+ AI documents), files, usage (+ AI meter),
                          analytics, members, settings, billing, api-keys,
-                         audit-logs, profile — and the Intelligence section:
-                         playground, memory, prompts, workflows, ai-providers
+                         audit-logs, profile — the Intelligence section:
+                         playground, memory, prompts, workflows, ai-providers —
+                         and the Computer Use section: browser sessions, live
+                         console, recordings (+replay), history, downloads,
+                         uploads, screenshots, policy, engine settings
   api/auth/[...nextauth]/ Auth.js handler
   api/assets/[id]/        authorized asset streaming (avatars, exports, evidence)
   api/ai/                 Phase 3 REST surface (chat, conversations, memory,
                           knowledge, embeddings, providers, workflows, usage)
+  api/browser/            Phase 4 REST surface (sessions, actions, executions,
+                          downloads, uploads, screenshots, logs, replay,
+                          permissions, settings, profiles, health, SSE stream)
   api/cron/               memory-sweep (Vercel Cron, CRON_SECRET-guarded)
+packages/computer-use/  the Computer Use Runtime (no Next.js imports):
+  browser-engine/       driver contract, playwright driver, process pool
+  browser-tools/        Action contract + 38-action catalog + AI tool provider
+  selectors/            strategy scoring, resolution, self-healing discovery
+  permissions/          domain lists, workspace policy evaluation, gates
+  recovery/             per-failure decision table + strategies
+  execution/            planner, FIFO queue, per-step manager with parking
+  sessions/ recording/ downloads/ uploads/ cookies/ profiles/ vision/ audit/
+  repositories/         Prisma adapters behind repository interfaces
+packages/browser-worker/ remote-browser sidecar (token-gated WS + Dockerfile)
 packages/ai-runtime/    the provider-agnostic brain (no Next.js imports):
   providers/            ChatProvider/EmbeddingProvider contracts + gemini,
                         openai-compatible (OpenRouter…), ollama adapters
@@ -236,21 +325,26 @@ components/             ui/ primitives, layout, marketing, dashboard, auth forms
                         dashboard/ai/ intelligence surfaces
 lib/
   actions/              server actions (+ ai.ts: providers, settings, prompts,
-                        memory, knowledge, workflows, api keys)
+                        memory, knowledge, workflows, api keys; + browser.ts:
+                        sessions, quick actions, plans, policy, uploads)
   ai/                   runtime glue: settings (BYOK source), getRuntime() DI
                         container, REST envelope/error mapping
+  browser/              MCUE glue: getBrowserRuntime() DI container (pool,
+                        queue, repos, audit sink, approval bridge), REST
+                        envelope/error mapping for /api/browser/*
   api-auth.ts           session-or-msk_ principal resolution + scopes
   crypto.ts             AES-256-GCM vault for BYOK keys (scrypt from AUTH_SECRET)
   validations/          zod schemas for every input surface
   permissions.ts        rank-based RBAC engine (single source of truth)
   rate-limit.ts         sliding-window limiter + named policies
-  audit.ts              fail-safe audit logging (43 action types)
+  audit.ts              fail-safe audit logging (60 action types incl. browser.*)
   billing.ts            plan limits + billing-period helpers
   mail.ts               email templates + Resend / console transport
   workspace.ts          session resolution, workspace context, permission checks
 prisma/
-  schema.prisma         30 models: UUIDs, soft deletes, composite indexes, cascades,
-                        vector(768) columns for semantic recall
+  schema.prisma         41 models: UUIDs, soft deletes, composite indexes, cascades,
+                        vector(768) columns for semantic recall, 11 browser_*
+                        tables for the Computer Use Engine
   migrations/           versioned SQL (via migrate deploy; HNSW indexes hand-kept)
   seed.ts               idempotent demo data
 scripts/                smoke.mjs · auth-flow-test.mts · dashboard-routes-test.mts
@@ -304,6 +398,50 @@ for await (const event of client.chat.stream({ messages: [{ role: "user", conten
 const hits = await client.knowledge.search("dual sign-off");
 const used = await client.usage.summarize(30);
 ```
+
+## REST API — Computer Use (Phase 4)
+
+All endpoints under `/api/browser/*`, same envelope and auth as `/api/ai/*`
+(plus the `browser.read` / `browser.execute` scopes on `msk_…` keys).
+
+```bash
+# engine health (pool, queue, driver capabilities, action count)
+curl $HOST/api/browser/health -H "Authorization: Bearer msk_…"
+
+# open a governed session, list the 38-action catalog
+curl -X POST $HOST/api/browser/sessions -H "Authorization: Bearer msk_…" \
+  -H "Content-Type: application/json" -d '{"startUrl":"https://example.com"}'
+curl $HOST/api/browser/actions -H "Authorization: Bearer msk_…"
+
+# run one action inline (validated, policy-checked, audited)
+curl -X POST $HOST/api/browser/actions -H "Authorization: Bearer msk_…" \
+  -H "Content-Type: application/json" \
+  -d '{"sessionId":"<id>","action":"take_screenshot","args":{"fullPage":true}}'
+
+# queue a multi-step execution (202) then watch it over SSE
+curl -X POST $HOST/api/browser/executions -H "Authorization: Bearer msk_…" \
+  -H "Content-Type: application/json" \
+  -d '{"sessionId":"<id>","steps":[{"action":"navigate","args":{"url":"https://example.com"}},{"action":"extract_text","args":{}}]}'
+curl -N $HOST/api/browser/executions/<exec>/stream -H "Authorization: Bearer msk_…"
+
+# artifacts + governance
+curl $HOST/api/browser/executions/<exec>/replay  -H "Authorization: Bearer msk_…"
+curl $HOST/api/browser/downloads/<id>/file       -H "Authorization: Bearer msk_…" -OJ
+curl $HOST/api/browser/screenshots/<id>/image    -H "Authorization: Bearer msk_…" -O
+curl $HOST/api/browser/logs?limit=50             -H "Authorization: Bearer msk_…"
+curl -X PUT $HOST/api/browser/permissions -H "Authorization: Bearer msk_…" \
+  -H "Content-Type: application/json" \
+  -d '{"confirmationDomains":["*.bank.example"],"blockedDomains":["*.exe-mirror.example"]}'
+curl -X POST $HOST/api/browser/sessions/<id>/tabs -H "Authorization: Bearer msk_…" \
+  -H "Content-Type: application/json" -d '{"url":"https://example.com/docs"}'
+curl -X DELETE $HOST/api/browser/sessions/<id> -H "Authorization: Bearer msk_…"
+```
+
+Executions parked on a confirmation domain return `AWAITING_APPROVAL` with an
+`approvalId`; after the approval is decided in the dashboard,
+`POST /api/browser/executions/<id>/resume` continues the plan from the parked
+step. Downloads flagged by the heuristic scanner stay `HELD` — the `/file`
+route refuses to serve them until released (Manager+, audited).
 
 ## Data-layer conventions
 
