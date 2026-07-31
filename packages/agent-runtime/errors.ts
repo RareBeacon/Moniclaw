@@ -39,8 +39,22 @@ export class AgentError extends Error {
   }
 }
 
+/**
+ * Phase-3 model-layer error names (structural match — the packages stay
+ * decoupled, so we never import the classes). Workers whose workspace has no
+ * configured provider — or whose providers all fail — fail honestly as
+ * `upstream_failed`, not `internal`.
+ */
+const PROVIDER_ERROR_NAMES = new Set([
+  "ProviderError", "NoProviderConfiguredError", "AllProvidersFailedError",
+]);
+
 export function toAgentError(err: unknown, fallback: AgentErrorKind = "internal"): AgentError {
   if (err instanceof AgentError) return err;
   const message = err instanceof Error ? err.message : String(err);
+  const { name } = (err ?? {}) as { name?: unknown };
+  if (typeof name === "string" && PROVIDER_ERROR_NAMES.has(name)) {
+    return new AgentError("upstream_failed", message);
+  }
   return new AgentError(fallback, message);
 }

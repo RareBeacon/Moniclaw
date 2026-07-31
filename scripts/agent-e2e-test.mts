@@ -1,0 +1,350 @@
+/**
+ * AI Workers REST end-to-end test against a live deployment with a real
+ * database. Provisions an ephemeral workspace (OWNER + VIEWER), signs in
+ * through the real Auth.js HTTP surface, then exercises the /api/agents/*
+ * surface:
+ *
+ *   agent create → validation negative → DRAFT dispatch refused (409) →
+ *   PATCH promote → dispatch (202) → run reaches terminal state → idempotent
+ *   redispatch → detailed run + events + audit trail → kill-switch cancel →
+ *   SSE stream contract → RBAC (viewer 403 on dispatch) → scheduler tick
+ *   (401 without secret; dispatches a due cron worker with CRON_SECRET).
+ *
+ * Model posture: the ephemeral workspace has no BYOK provider keys, so the
+ * dispatched runs fail HONESTLY as errorClass "upstream_failed" — that IS
+ * the assertion locally and in CI until a workspace adds a key. A live
+ * research run on the seeded demo workspace (keys present) is the separate
+ * production proof.
+ *
+ * Usage:
+ *   BASE_URL=http://localhost:3100 DATABASE_URL=postgres://... CRON_SECRET=... \
+ *     npx tsx scripts/agent-e2e-test.mts
+ */
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
+const BASE = process.env.BASE_URL ?? "http://localhost:3000";
+const DATABASE_URL = process.env.DATABASE_URL;
+const CRON_SECRET = process.env.CRON_SECRET ?? "";
+
+let failures = 0;
+
+function report(ok: boolean, name: string, detail = "") {
+  if (ok) console.log(`  ✓ ${name}${detail ? `  (${detail})` : ""}`);
+  else {
+    failures++;
+    console.error(`  ✗ ${name}${detail ? `  (${detail})` : ""}`);
+  }
+}
+
+function cookieOf(res: Response): string {
+  const anyHeaders = res.headers as unknown as { getSetCookie?: () => string[] };
+  const list =
+    typeof anyHeaders.getSetCookie === "function"
+      ? anyHeaders.getSetCookie()
+      : ([res.headers.get("set-cookie")].filter(Boolean) as string[]);
+  return list.map((cookie) => cookie.split(";")[0]).join("; ");
+}
+
+async function signIn(email: string, password: string): Promise<string> {
+  const csrfRes = await fetch(`${BASE}/api/auth/csrf`);
+  const { csrfToken } = (await csrfRes.json()) as { csrfToken: string };
+  const signInRes = await fetch(`${BASE}/api/auth/callback/credentials`, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Cookie: cookieOf(csrfRes),
+    },
+    body: new URLSearchParams({ csrfToken, email, password }),
+  });
+  return cookieOf(signInRes);
+}
+
+type Envelope<T> = { ok: true; data: T } | { ok: false; error: string; message: string };
+
+async function api<T = unknown>(
+  cookie: string,
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<{ status: number; body: Envelope<T> }> {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", Cookie: cookie },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  let parsed: Envelope<T>;
+  try {
+    parsed = JSON.parse(text) as Envelope<T>;
+  } catch {
+    parsed = { ok: false, error: "non_json", message: text.slice(0, 200) };
+  }
+  return { status: res.status, body: parsed };
+}
+
+type RunRow = {
+  id: string;
+  status: string;
+  errorClass: string | null;
+  error: string | null;
+  triggerSource: string;
+  agentId: string;
+};
+
+async function waitForTerminal(
+  cookie: string,
+  runId: string,
+  timeoutMs = 45_000
+): Promise<RunRow | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await api<{ run: RunRow }>(cookie, "GET", `/api/agents/runs/${runId}`);
+    if (res.body.ok && ["SUCCEEDED", "FAILED", "CANCELED"].includes(res.body.data.run.status)) {
+      return res.body.data.run;
+    }
+    await new Promise((r) => setTimeout(r, 800));
+  }
+  return null;
+}
+
+async function main() {
+  if (!DATABASE_URL) {
+    console.error("DATABASE_URL is required.");
+    process.exit(1);
+  }
+  const db = new PrismaClient({ datasources: { db: { url: DATABASE_URL } } });
+  const stamp = Date.now().toString(36);
+  const ownerEmail = `e2e-agents-owner+${stamp}@agents.moniclaw.invalid`;
+  const viewerEmail = `e2e-agents-viewer+${stamp}@agents.moniclaw.invalid`;
+  const password = "e2e-password-91!";
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  let workspaceId: string | null = null;
+
+  try {
+    const workspace = await db.workspace.create({
+      data: { name: "E2E AI Workers", slug: `e2e-agents-${stamp}` },
+    });
+    workspaceId = workspace.id;
+    await db.user.create({
+      data: {
+        name: "E2E Workers Owner",
+        email: ownerEmail,
+        passwordHash,
+        emailVerified: new Date(),
+        memberships: { create: { role: "OWNER", workspaceId: workspace.id } },
+      },
+    });
+    await db.user.create({
+      data: {
+        name: "E2E Workers Viewer",
+        email: viewerEmail,
+        passwordHash,
+        emailVerified: new Date(),
+        memberships: { create: { role: "VIEWER", workspaceId: workspace.id } },
+      },
+    });
+    report(true, "ephemeral workspace + owner + viewer provisioned");
+
+    const owner = await signIn(ownerEmail, password);
+    const viewer = await signIn(viewerEmail, password);
+    report(
+      owner.includes("authjs.session-token") && viewer.includes("authjs.session-token"),
+      "owner + viewer signed in via real auth surface"
+    );
+
+    console.log("\nagent lifecycle:");
+    const bad = await api(owner, "POST", "/api/agents", {
+      name: "Broken Cron",
+      description: "A scheduled agent that is missing its cron expression.",
+      trigger: "SCHEDULE",
+    });
+    report(bad.status === 400 && !bad.body.ok, "create with SCHEDULE and no cron → 400", `→ ${bad.status}`);
+
+    const created = await api<{ agent: { id: string; slug: string; workerType: string } }>(
+      owner,
+      "POST",
+      "/api/agents",
+      {
+        name: "E2E Research Worker",
+        slug: `research-${stamp}`,
+        description: "Recounts competitive pricing pages weekly and files cited reports for the strategy team.",
+        workerType: "research",
+        goal: "Map the pricing pages of the top five CRM competitors and file a cited comparison.",
+        instructions: "Prefer primary sources; cite every figure.",
+      }
+    );
+    report(created.status === 201 && created.body.ok, "POST /api/agents → 201 research worker", `→ ${created.status}`);
+    if (!created.body.ok) throw new Error("agent create failed — cannot continue");
+    const agentId = created.body.data.agent.id;
+    report(created.body.data.agent.workerType === "research", "workerType persisted as research");
+
+    const hidden = await api(viewer, "GET", "/api/agents");
+    report(hidden.status === 200 && hidden.body.ok, "viewer can list agents (agents.read)", `→ ${hidden.status}`);
+
+    const draftDispatch = await api(owner, "POST", `/api/agents/${agentId}/dispatch`, {});
+    report(
+      draftDispatch.status === 409 && !draftDispatch.body.ok && draftDispatch.body.error === "agent_unavailable",
+      "DRAFT agent refuses dispatch → 409 agent_unavailable",
+      `→ ${draftDispatch.status} ${!draftDispatch.body.ok ? draftDispatch.body.error : ""}`
+    );
+
+    const promoted = await api(owner, "PATCH", `/api/agents/${agentId}`, { status: "SHADOW" });
+    report(promoted.status === 200 && promoted.body.ok, "PATCH status → SHADOW", `→ ${promoted.status}`);
+
+    console.log("\ndispatch → terminal run (honest failure without model keys):");
+    const idem = `e2e-${stamp}-1`;
+    const first = await api<{ run: RunRow; deduplicated: boolean }>(
+      owner, "POST", `/api/agents/${agentId}/dispatch`, { idempotencyKey: idem }
+    );
+    report(first.status === 202 && first.body.ok && !first.body.data.deduplicated, "dispatch → 202 queued", `→ ${first.status}`);
+    if (!first.body.ok) throw new Error("dispatch failed — cannot continue");
+    const runId = first.body.data.run.id;
+
+    const dedupe = await api<{ run: RunRow; deduplicated: boolean }>(
+      owner, "POST", `/api/agents/${agentId}/dispatch`, { idempotencyKey: idem }
+    );
+    report(
+      dedupe.status === 200 && dedupe.body.ok && dedupe.body.data.deduplicated && dedupe.body.data.run.id === runId,
+      "same idempotency key → deduplicated, same run",
+      `→ ${dedupe.status}`
+    );
+
+    const terminal = await waitForTerminal(owner, runId);
+    report(!!terminal, "run reached a terminal state", terminal ? terminal.status : "timeout");
+    report(
+      !!terminal && terminal.status === "FAILED" && terminal.errorClass === "upstream_failed",
+      "no model keys → run fails HONESTLY as upstream_failed",
+      terminal ? `${terminal.status} · ${terminal.errorClass}` : "timeout"
+    );
+
+    const evts = await api<{ events: Array<{ type: string; message: string }> }>(
+      owner, "GET", `/api/agents/runs/${runId}/events?limit=100`
+    );
+    const evtTypes = evts.body.ok ? evts.body.data.events.map((e) => e.type) : [];
+    report(
+      evts.body.ok && evtTypes.includes("run_started") && evtTypes.includes("run_failed"),
+      "evidence trail: run_started + run_failed recorded",
+      evtTypes.join(",")
+    );
+
+    const auditRows = await db.auditLog.findMany({
+      where: { workspaceId: workspace.id, action: { in: ["agent.run.dispatch", "agent.run.failed"] } },
+    });
+    report(
+      auditRows.some((a) => a.action === "agent.run.dispatch") && auditRows.some((a) => a.action === "agent.run.failed"),
+      "audit trail: dispatch + failure recorded"
+    );
+
+    const agentRow = await db.agent.findUniqueOrThrow({ where: { id: agentId } });
+    report(agentRow.runCount >= 1, "agent runCount incremented on terminal", `runCount=${agentRow.runCount}`);
+
+    console.log("\nkill switch:");
+    const queuedRun = await db.agentRun.create({
+      data: {
+        agentId,
+        workspaceId: workspace.id,
+        mode: "LIVE",
+        triggerSource: "test",
+        status: "QUEUED",
+        progress: { goal: "Inserted directly to exercise the cancel contract." },
+        budgetSnapshot: {},
+      },
+    });
+    const canceled = await api(owner, "POST", `/api/agents/runs/${queuedRun.id}/cancel`, {});
+    report(canceled.status === 200 && canceled.body.ok, "POST cancel on a queued run → 200", `→ ${canceled.status}`);
+    const afterCancel = await api<{ run: RunRow }>(owner, "GET", `/api/agents/runs/${queuedRun.id}`);
+    report(
+      afterCancel.body.ok && afterCancel.body.data.run.status === "CANCELED",
+      "queued run transitions to CANCELED",
+      afterCancel.body.ok ? afterCancel.body.data.run.status : "?"
+    );
+
+    console.log("\nSSE stream contract:");
+    const streamRes = await fetch(`${BASE}/api/agents/runs/${runId}/stream`, {
+      headers: { Cookie: owner },
+    });
+    const streamText = await streamRes.text();
+    report(
+      streamRes.status === 200 && streamText.includes("event: status") && streamText.includes("event: end"),
+      "GET stream → SSE status+end frames on a terminal run",
+      `→ ${streamRes.status}`
+    );
+
+    console.log("\nRBAC:");
+    const viewerDispatch = await api(viewer, "POST", `/api/agents/${agentId}/dispatch`, {});
+    report(
+      viewerDispatch.status === 403,
+      "viewer dispatch → 403 (agents.run requires Member+)",
+      `→ ${viewerDispatch.status}`
+    );
+    const viewerCancel = await api(viewer, "POST", `/api/agents/runs/${runId}/cancel`, {});
+    report(viewerCancel.status === 403, "viewer cancel → 403", `→ ${viewerCancel.status}`);
+
+    console.log("\nscheduler tick:");
+    const noSecret = await fetch(`${BASE}/api/agents/tick`, { method: "POST" });
+    report(noSecret.status === 401, "POST tick without secret → 401", `→ ${noSecret.status}`);
+
+    if (CRON_SECRET) {
+      await db.agent.update({
+        where: { id: agentId },
+        data: { trigger: "SCHEDULE", schedule: "* * * * *", status: "AUTONOMOUS" },
+      });
+      const tickRes = await fetch(`${BASE}/api/agents/tick`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${CRON_SECRET}` },
+      });
+      const tickBody = (await tickRes.json()) as { ok: boolean; data?: { dispatched: number; reaped: number; requeued: number } };
+      report(
+        tickRes.status === 200 && tickBody.ok && (tickBody.data?.dispatched ?? 0) >= 1,
+        "tick with CRON_SECRET dispatches the due cron worker",
+        `→ ${tickRes.status} dispatched=${tickBody.data?.dispatched ?? "?"}`
+      );
+
+      const scheduled = await db.agentRun.findFirst({
+        where: { agentId, triggerSource: "schedule" },
+        orderBy: { createdAt: "desc" },
+      });
+      if (scheduled) {
+        const schedTerminal = await waitForTerminal(owner, scheduled.id, 45_000);
+        report(
+          !!schedTerminal,
+          "schedule-triggered run executes to terminal",
+          schedTerminal ? `${schedTerminal.status} · ${schedTerminal.errorClass ?? ""}` : "timeout"
+        );
+        report(scheduled.idempotencyKey?.startsWith(`cron:${agentId}:`) ?? false, "cron idempotency key stamped");
+      } else {
+        report(false, "schedule-triggered run row exists");
+      }
+
+      const agentAfter = await db.agent.findUniqueOrThrow({ where: { id: agentId } });
+      report(agentAfter.lastScheduledAt !== null, "lastScheduledAt stamped by the sweep");
+    } else {
+      report(true, "CRON_SECRET not set — tick dispatch checks skipped");
+    }
+
+    console.log("\nadmin surface:");
+    const health = await api<{ status: string; runs: { queued: number } }>(owner, "GET", "/api/agents/health");
+    report(health.status === 200 && health.body.ok && health.body.data.status === "ok", "GET /api/agents/health → diagnostics", `→ ${health.status}`);
+
+    const detail = await api<{ agent: { id: string } }>(owner, "GET", `/api/agents/${agentId}`);
+    report(detail.status === 200 && detail.body.ok, "GET /api/agents/[id] → detail + recentRuns", `→ ${detail.status}`);
+
+    const cross = await api(owner, "GET", `/api/agents/runs?agentId=${agentId}&status=FAILED`);
+    report(cross.status === 200 && cross.body.ok, "GET /api/agents/runs filtered by agent+status", `→ ${cross.status}`);
+  } finally {
+    if (workspaceId) {
+      await db.auditLog.deleteMany({ where: { workspaceId } });
+      await db.workspace.delete({ where: { id: workspaceId } }); // cascades agents/runs/events
+    }
+    await db.user.deleteMany({ where: { email: { in: [ownerEmail, viewerEmail] } } }).catch(() => {});
+    await db.$disconnect();
+  }
+
+  console.log(failures === 0 ? "\nAll AI Workers E2E checks passed." : `\n${failures} check(s) failed.`);
+  process.exit(failures === 0 ? 0 : 1);
+}
+
+void main();
