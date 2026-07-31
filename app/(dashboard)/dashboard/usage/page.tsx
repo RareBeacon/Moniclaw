@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { currentBillingPeriod, PLAN_LIMITS } from "@/lib/billing";
 import { getCurrentUser, getPrimaryWorkspace } from "@/lib/workspace";
 import { formatCredits } from "@/lib/format";
+import { getRuntime } from "@/lib/ai/runtime";
 
 export const metadata: Metadata = {
   title: "Usage",
@@ -132,11 +133,138 @@ export default async function UsagePage() {
         )}
       </section>
 
+      <AiUsageSection workspaceId={workspace.id} />
+
       <p className="mt-8 text-xs leading-5 text-muted-foreground">
         Credits measure agent work — browser actions, API calls, reasoning
         steps. Per-run breakdowns live in Runs; CSV exports in Files for
         finance reconciliation.
       </p>
+    </div>
+  );
+}
+
+const int = new Intl.NumberFormat("en-US");
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return int.format(n);
+}
+
+async function AiUsageSection({ workspaceId }: { workspaceId: string }) {
+  const summary = await getRuntime().usage.summarize(workspaceId, 30);
+  const maxDaily = Math.max(1, ...summary.daily.map((d) => d.tokens));
+  const maxProvider = Math.max(1, ...summary.byProvider.map((p) => p.totalTokens));
+
+  return (
+    <section className="mt-8" aria-label="AI runtime usage">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold">AI runtime (last {summary.windowDays} days)</h2>
+        <p className="text-xs text-muted-foreground">
+          Every model call through the runtime — provider-agnostic.
+        </p>
+      </div>
+
+      {summary.requests === 0 ? (
+        <p className="mt-4 rounded-xl border border-dashed bg-card/50 px-5 py-10 text-center text-sm text-muted-foreground">
+          No AI calls yet. Open the Playground or run a workflow to start the
+          meter — tokens, latency, and costs land here.
+        </p>
+      ) : (
+        <>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Kpi label="Requests" value={int.format(summary.requests)} hint={`${Math.round(summary.okRate * 100)}% ok`} />
+            <Kpi label="Tokens" value={formatTokens(summary.totalTokens)} hint={`${formatTokens(summary.promptTokens)} in · ${formatTokens(summary.completionTokens)} out`} />
+            <Kpi label="Avg latency" value={`${summary.avgLatencyMs}ms`} hint={`${int.format(summary.toolCalls)} tool calls`} />
+            <Kpi label="Est. cost" value={`$${summary.costUsd.toFixed(4)}`} hint="reported by providers" />
+          </div>
+
+          {summary.daily.length > 0 && (
+            <div className="mt-6 rounded-xl border bg-card px-5 py-4">
+              <p className="text-xs font-medium text-muted-foreground">Tokens per day</p>
+              <div className="mt-3 flex h-24 items-end gap-1" role="img" aria-label="Daily token usage bar chart">
+                {summary.daily.map((d) => (
+                  <div
+                    key={d.day}
+                    className="flex-1 rounded-t bg-primary/70"
+                    style={{ height: `${Math.max(3, Math.round((d.tokens / maxDaily) * 100))}%` }}
+                    title={`${d.day}: ${formatTokens(d.tokens)} tokens · ${int.format(d.requests)} requests`}
+                  />
+                ))}
+              </div>
+              <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
+                <span>{summary.daily[0]?.day}</span>
+                <span>{summary.daily[summary.daily.length - 1]?.day}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <div className="rounded-xl border bg-card px-5 py-4">
+              <p className="text-xs font-medium text-muted-foreground">By provider</p>
+              <ul className="mt-3 space-y-2.5">
+                {summary.byProvider.map((p) => (
+                  <li key={p.provider}>
+                    <div className="flex items-baseline justify-between text-sm">
+                      <span className="font-medium capitalize">{p.provider}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatTokens(p.totalTokens)} tokens · {int.format(p.requests)} req · ${p.costUsd.toFixed(4)}
+                      </span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className="h-full rounded-full bg-primary/70"
+                        style={{ width: `${Math.max(2, Math.round((p.totalTokens / maxProvider) * 100))}%` }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="space-y-6">
+              <div className="rounded-xl border bg-card px-5 py-4">
+                <p className="text-xs font-medium text-muted-foreground">Top models</p>
+                <ul className="mt-3 space-y-1.5 text-sm">
+                  {summary.byModel.map((m) => (
+                    <li key={m.model} className="flex items-baseline justify-between gap-3">
+                      <span className="truncate font-mono text-xs">{m.model}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {formatTokens(m.totalTokens)} · {int.format(m.requests)} req
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {summary.topErrors.length > 0 && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-5 py-4">
+                  <p className="text-xs font-medium text-red-600">Top errors</p>
+                  <ul className="mt-2 space-y-1 text-sm">
+                    {summary.topErrors.map((e) => (
+                      <li key={e.code} className="flex justify-between text-xs">
+                        <span className="font-mono">{e.code}</span>
+                        <span className="text-muted-foreground">×{e.count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function Kpi({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="rounded-xl border bg-card px-4 py-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>
     </div>
   );
 }

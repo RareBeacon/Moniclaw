@@ -5,17 +5,22 @@ import { usePathname } from "next/navigation";
 import {
   BookOpen,
   Bot,
+  Brain,
   CreditCard,
+  FileText,
   FolderKanban,
   Gauge,
   History,
   KeyRound,
   LayoutDashboard,
   LineChart,
+  MessagesSquare,
+  Plug,
   ScrollText,
   Settings,
   ShieldCheck,
   Users,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 import type { MembershipRole } from "@prisma/client";
@@ -44,6 +49,16 @@ const sections: NavSection[] = [
       { href: "/dashboard/agents", label: "Agents", icon: Bot, permission: "agents.read" },
       { href: "/dashboard/runs", label: "Runs", icon: History, permission: "agents.read" },
       { href: "/dashboard/approvals", label: "Approvals", icon: ShieldCheck, permission: "approvals.read", badge: true },
+    ],
+  },
+  {
+    title: "Intelligence",
+    items: [
+      { href: "/dashboard/playground", label: "Playground", icon: MessagesSquare, permission: "ai.chat" },
+      { href: "/dashboard/memory", label: "Memory", icon: Brain, permission: "ai.memory.read" },
+      { href: "/dashboard/prompts", label: "Prompts", icon: FileText, permission: "ai.prompts.manage" },
+      { href: "/dashboard/workflows", label: "Workflows", icon: Workflow, permission: "ai.workflows.manage" },
+      { href: "/dashboard/ai-providers", label: "AI Providers", icon: Plug, permission: "ai.providers.manage" },
     ],
   },
   {
