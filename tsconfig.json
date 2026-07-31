@@ -22,7 +22,8 @@
       "@/*": ["./*"],
       "@runtime/*": ["./packages/ai-runtime/*"],
       "@cue/*": ["./packages/computer-use/*"],
-      "@agents/*": ["./packages/agent-runtime/*"]
+      "@agents/*": ["./packages/agent-runtime/*"],
+      "@sales/*": ["./packages/sales-runtime/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

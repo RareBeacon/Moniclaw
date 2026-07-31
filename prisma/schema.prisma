@@ -68,6 +68,15 @@ model User {
   browserExecutions      BrowserExecution[]
   browserUploads         BrowserUpload[]
 
+  // Sales Employee (Phase 6)
+  salesCompaniesOwned  SalesCompany[]  @relation("SalesCompanyOwner")
+  salesContactsOwned   SalesContact[]  @relation("SalesContactOwner")
+  salesDealsOwned      SalesDeal[]     @relation("SalesDealOwner")
+  salesActivities      SalesActivity[] @relation("SalesActivityAuthor")
+  salesCampaigns       SalesCampaign[] @relation("SalesCampaignCreator")
+  salesDrafts          SalesDraft[]    @relation("SalesDraftCreator")
+  salesSavedSearches   SalesSavedSearch[] @relation("SalesSearchCreator")
+
   @@index([deletedAt])
   @@map("users")
 }
@@ -177,6 +186,16 @@ model Workspace {
   browserSessions      BrowserSession[]
   browserExecutions    BrowserExecution[]
   browserBinaries      BrowserBinary[]
+
+  // Sales Employee (Phase 6)
+  salesCompanies    SalesCompany[]
+  salesContacts     SalesContact[]
+  salesPipelines    SalesPipeline[]
+  salesDeals        SalesDeal[]
+  salesActivities   SalesActivity[]
+  salesCampaigns    SalesCampaign[]
+  salesDrafts       SalesDraft[]
+  salesSavedSearches SalesSavedSearch[]
 
   @@index([deletedAt])
   @@map("workspaces")
@@ -328,6 +347,11 @@ model AgentRun {
   events    RunEvent[]
   approvals Approval[]
 
+  // Sales Employee (Phase 6)
+  salesResearchRuns SalesCompany[]  @relation("SalesCompanyResearch")
+  salesActivities   SalesActivity[] @relation("SalesActivityRun")
+  salesDrafts       SalesDraft[]    @relation("SalesDraftRun")
+
   @@index([workspaceId, status, createdAt])
   @@index([agentId, createdAt])
   @@index([parentRunId])
@@ -377,6 +401,9 @@ model Approval {
   run       AgentRun?  @relation(fields: [runId], references: [id], onDelete: Cascade)
   workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   decidedBy User?      @relation("ApprovalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  // Sales Employee (Phase 6)
+  salesDrafts SalesDraft[] @relation("SalesDraftApproval")
 
   @@index([status, createdAt])
   @@index([workspaceId, status, createdAt])
@@ -1191,3 +1218,383 @@ model BrowserScreenshot {
 }
 
 // BrowserBinary back-relations live on the artifact tables above.
+
+// ============================================================================
+// Phase 6 · AI Sales Employee — additive only; Phases 2-5 semantics untouched.
+// ============================================================================
+
+enum SalesResearchStatus {
+  NONE
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum SalesContactStatus {
+  NEW
+  CONTACTED
+  ENGAGED
+  QUALIFIED
+  CUSTOMER
+  LOST
+}
+
+enum SalesContactSource {
+  MANUAL
+  RESEARCH
+  IMPORT
+}
+
+enum SalesDealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum SalesActivityType {
+  NOTE
+  TASK
+  CALL
+  MEETING
+  EMAIL
+  REMINDER
+}
+
+enum SalesCampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum SalesCampaignStepKind {
+  DRAFT_EMAIL
+  LINKEDIN_CONNECT
+  TASK
+  WAIT
+}
+
+enum SalesEnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  UNSUBSCRIBED
+  BOUNCED
+}
+
+enum SalesDraftChannel {
+  EMAIL
+  LINKEDIN
+}
+
+enum SalesDraftStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  SCHEDULED
+  SENT
+  FAILED
+  CANCELED
+}
+
+model SalesCompany {
+  id            String              @id @default(uuid())
+  workspaceId   String
+  name          String
+  domain        String?
+  industry      String?
+  size          String? // headcount bucket, e.g. "11-50"
+  geography     String? // HQ + presence, free-form for now
+  businessModel String?
+  productsServices String?
+  targetMarket  String?
+  techStack     String[]             @default([])
+  socialLinks   Json                 @default("[]") // [{type: linkedin|x|facebook…, url}]
+  summary       String? // worker-written profile abstract
+  sources       Json                 @default("[]") // citations [{url,title}]
+  researchStatus     SalesResearchStatus @default(NONE)
+  lastResearchedAt   DateTime?
+  lastResearchRunId  String? // link into packages/agent-runtime evidence
+  // Prospecting scores (pure deterministic logic in packages/sales-runtime/scoring)
+  icpFit         Int? // 0-100 ICP match (null until configured)
+  fitScore       Int  @default(0) // 0-100 company signal score
+  priorityScore  Int  @default(0) // 0-100 outreach priority
+  scoreReasons   Json @default("{}") // explainability per score
+  tags           String[] @default([])
+  segment        String?
+  territory      String?
+  ownerId        String?
+  custom         Json     @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner     User?     @relation("SalesCompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  researchRun AgentRun? @relation("SalesCompanyResearch", fields: [lastResearchRunId], references: [id], onDelete: SetNull)
+  contacts  SalesContact[]
+  deals     SalesDeal[]
+  activities SalesActivity[]
+  drafts    SalesDraft[]
+  enrollments SalesCampaignEnrollment[]
+
+  @@unique([workspaceId, domain], name: "salesCompanyDomain")
+  @@index([workspaceId, deletedAt, createdAt])
+  @@index([workspaceId, priorityScore])
+  @@map("sales_companies")
+}
+
+model SalesContact {
+  id          String   @id @default(uuid())
+  workspaceId String
+  companyId   String?
+  name        String
+  title       String?
+  email       String?
+  linkedinUrl String?
+  phone       String?
+  notes       String?
+  status      SalesContactStatus @default(NEW)
+  source      SalesContactSource @default(MANUAL)
+  tags        String[]  @default([])
+  ownerId     String?
+  lastTouchedAt DateTime?
+  custom      Json      @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company   SalesCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  owner     User?        @relation("SalesContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  deals     SalesDeal[]
+  activities SalesActivity[]
+  drafts    SalesDraft[]
+  enrollments SalesCampaignEnrollment[]
+
+  @@unique([workspaceId, email], name: "salesContactEmail")
+  @@index([workspaceId, companyId])
+  @@index([workspaceId, status])
+  @@map("sales_contacts")
+}
+
+model SalesPipeline {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stages    SalesPipelineStage[]
+  deals     SalesDeal[]
+
+  @@unique([workspaceId, name], name: "salesPipelineName")
+  @@map("sales_pipelines")
+}
+
+model SalesPipelineStage {
+  id             String @id @default(uuid())
+  pipelineId     String
+  name           String
+  order          Int
+  winProbability Int    @default(50)
+
+  pipeline SalesPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals    SalesDeal[]
+
+  @@unique([pipelineId, name], name: "salesPipelineStageName")
+  @@index([pipelineId, order])
+  @@map("sales_pipeline_stages")
+}
+
+model SalesDeal {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  companyId        String
+  primaryContactId String?
+  pipelineId       String
+  stageId          String
+  title            String
+  valueUsd         Decimal? @db.Decimal(14, 2)
+  currency         String   @default("USD")
+  status           SalesDealStatus @default(OPEN)
+  expectedCloseAt  DateTime?
+  closedAt         DateTime?
+  lostReason       String?
+  ownerId          String?
+  tags             String[] @default([])
+  custom           Json     @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt        DateTime?
+
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company         SalesCompany   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  primaryContact  SalesContact?  @relation(fields: [primaryContactId], references: [id], onDelete: SetNull)
+  pipeline        SalesPipeline  @relation(fields: [pipelineId], references: [id], onDelete: NoAction)
+  stage           SalesPipelineStage @relation(fields: [stageId], references: [id], onDelete: NoAction)
+  owner           User?          @relation("SalesDealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  activities      SalesActivity[]
+
+  @@index([workspaceId, status])
+  @@index([pipelineId, stageId])
+  @@index([companyId])
+  @@map("sales_deals")
+}
+
+model SalesActivity {
+  id          String   @id @default(uuid())
+  workspaceId String
+  companyId   String?
+  contactId   String?
+  dealId      String?
+  type        SalesActivityType
+  subject     String
+  body        String?
+  dueAt       DateTime?
+  completedAt DateTime?
+  reminderSentAt DateTime?
+  createdById String?
+  agentRunId  String? // worker-logged activities carry their evidence run
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company   SalesCompany?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contact   SalesContact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  deal      SalesDeal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  createdBy User?          @relation("SalesActivityAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  agentRun  AgentRun?      @relation("SalesActivityRun", fields: [agentRunId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, dueAt])
+  @@index([companyId, createdAt])
+  @@index([dealId, createdAt])
+  @@map("sales_activities")
+}
+
+model SalesCampaign {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  name          String
+  goal          String?
+  status        SalesCampaignStatus @default(DRAFT)
+  dailyCap      Int      @default(20) // outbound draft-production cap per day
+  sendWindow    Json     @default("{}") // {daysOfWeek:[1..5], startHour,endHour, timezone}
+  knowledgeContext String? // playbook hints appended to retrieval queries
+  createdById   String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  workspace    Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy    User?                    @relation("SalesCampaignCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  steps        SalesCampaignStep[]
+  enrollments  SalesCampaignEnrollment[]
+
+  @@unique([workspaceId, name], name: "salesCampaignName")
+  @@index([workspaceId, status])
+  @@map("sales_campaigns")
+}
+
+model SalesCampaignStep {
+  id           String @id @default(uuid())
+  campaignId   String
+  order        Int
+  kind         SalesCampaignStepKind
+  subject      String?
+  bodyTemplate String?
+  delayValue   Int      @default(0)
+  delayUnit    String   @default("DAYS") // HOURS | DAYS
+  condition    Json     @default("{}") // {ifContactStatus?: string[], ifNoReplyAfterDays?: number}
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  campaign SalesCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, order])
+  @@map("sales_campaign_steps")
+}
+
+model SalesCampaignEnrollment {
+  id            String   @id @default(uuid())
+  campaignId    String
+  contactId     String
+  companyId     String?
+  status        SalesEnrollmentStatus @default(ACTIVE)
+  currentStep   Int      @default(0)
+  nextRunAt     DateTime?
+  pausedAt      DateTime?
+  completedAt   DateTime?
+  exitReason    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  campaign SalesCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  SalesContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  company  SalesCompany?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  drafts   SalesDraft[]
+
+  @@unique([campaignId, contactId], name: "salesEnrollment")
+  @@index([campaignId, status, nextRunAt])
+  @@map("sales_campaign_enrollments")
+}
+
+model SalesDraft {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  contactId     String?
+  companyId     String?
+  campaignEnrollmentId String?
+  channel       SalesDraftChannel @default(EMAIL)
+  subject       String?
+  body          String
+  status        SalesDraftStatus @default(DRAFT)
+  scheduledAt   DateTime?
+  sentAt        DateTime?
+  threadId      String?
+  providerMessageId String?
+  deliveryStatus String   @default("UNKNOWN") // UNKNOWN|PENDING|DELIVERED|BOUNCED|OPENED
+  approvalId    String? // bridges to the Phase-2/3 Approval table
+  agentRunId    String? // worker that produced this draft
+  personalization Json  @default("{}") // template vars + retrieval context
+  rejectionNote String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact    SalesContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  company    SalesCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  enrollment SalesCampaignEnrollment? @relation(fields: [campaignEnrollmentId], references: [id], onDelete: SetNull)
+  approval   Approval?   @relation("SalesDraftApproval", fields: [approvalId], references: [id], onDelete: SetNull)
+  agentRun   AgentRun?   @relation("SalesDraftRun", fields: [agentRunId], references: [id], onDelete: SetNull)
+  createdBy  User?       @relation("SalesDraftCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([contactId])
+  @@map("sales_drafts")
+}
+
+model SalesSavedSearch {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  entity      String // companies | contacts | deals
+  filters     Json     @default("{}")
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("SalesSearchCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, name], name: "salesSavedSearchName")
+  @@map("sales_saved_searches")
+}
