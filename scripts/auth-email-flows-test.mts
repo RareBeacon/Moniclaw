@@ -57,12 +57,10 @@ async function postForm(
   url: string,
   fields: Record<string, string>
 ): Promise<Response> {
-  return fetch(url, {
-    method: "POST",
-    redirect: "manual",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams(fields).toString(),
-  });
+  // Next.js MPA-mode server actions are detected via multipart/form-data.
+  const fd = new FormData();
+  for (const [key, value] of Object.entries(fields)) fd.append(key, value);
+  return fetch(url, { method: "POST", redirect: "manual", body: fd });
 }
 
 function cookieOf(res: Response): string {
