@@ -114,6 +114,19 @@ export interface AgentRunRepository {
   listChildren(parentRunId: string): Promise<AgentRunRow[]>;
   countActiveByAgent(agentId: string): Promise<number>;
   /**
+   * Cross-workspace scheduler sweep: RUNNING runs started before `olderThan`.
+   * The orchestrator re-validates each row against its own budgetSnapshot
+   * before reaping — rows still within budget are left alone.
+   */
+  listStaleRunning(olderThan: Date, take?: number): Promise<AgentRunRow[]>;
+  /**
+   * Cross-workspace scheduler sweep: QUEUED rows created before `olderThan`
+   * whose dispatch job was lost (platform teardown between create and drain).
+   * Safe to re-enqueue: executeRun's status transition is the single-writer
+   * guard, so a healthy queued row re-enqueued twice executes at most once.
+   */
+  listStaleQueued(olderThan: Date, take?: number): Promise<AgentRunRow[]>;
+  /**
    * Unscoped lookup for orchestrator-owned queue jobs. Implementations MUST
    * only be reachable through executeRun (which re-validates before acting);
    * every HTTP-facing path uses the workspace-scoped `get`.

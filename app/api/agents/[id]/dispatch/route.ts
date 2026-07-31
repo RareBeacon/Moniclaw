@@ -3,7 +3,7 @@ import { errorResponse, guard, isGuarded, ok, readJson } from "@/lib/agents/api"
 import { dispatchApiSchema } from "@/lib/validations/agents";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ id: string }> };
 

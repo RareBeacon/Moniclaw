@@ -415,7 +415,16 @@ export class WorkerOrchestrator implements DelegationHandle {
 
   // ── Scheduler tick ──────────────────────────────────────────────────────
 
-  async tick(now: Date): Promise<{ dispatched: number; skipped: number }> {
+  /**
+   * Scheduler heartbeat: (1) reap zombie RUNNING rows past their wall-clock
+   * budget — on serverless the owning lambda can freeze mid-run, and without
+   * a reaper the row would never terminate; (2) rescue QUEUED rows whose
+   * dispatch job was lost between create and drain; (3) dispatch due cron
+   * workers. Safe to call every minute.
+   */
+  async tick(now: Date): Promise<{ dispatched: number; skipped: number; reaped: number; requeued: number }> {
+    const reaped = await this.reapStaleRuns(now);
+    const requeued = await this.rescueStaleQueued(now);
     const agents = await this.deps.agents.listSchedulable(now);
     let dispatched = 0, skipped = 0;
     for (const agent of agents) {
@@ -442,7 +451,68 @@ export class WorkerOrchestrator implements DelegationHandle {
         console.warn(`[agents] schedule dispatch failed for ${agent.id}:`, (err as Error).message);
       }
     }
-    return { dispatched, skipped };
+    return { dispatched, skipped, reaped, requeued };
+  }
+
+  /**
+   * Zombie reaper. A RUNNING row whose own wall-clock budget has passed can
+   * no longer finish (its compute context is gone) — terminate it honestly
+   * instead of letting it hang in RUNNING forever. Rows still inside their
+   * budget are untouched, so a healthy long run is never killed.
+   */
+  private async reapStaleRuns(now: Date): Promise<number> {
+    const stale = await this.deps.runs.listStaleRunning(new Date(now.getTime() - 15_000), 100);
+    let reaped = 0;
+    for (const run of stale) {
+      const budget = resolveBudget(run.budgetSnapshot);
+      const startedAt = run.startedAt ? new Date(run.startedAt).getTime() : null;
+      if (startedAt === null || startedAt + budget.maxDurationMs > now.getTime()) continue;
+      const moved = await this.deps.runs.transition(run.id, ["RUNNING"], "FAILED");
+      if (!moved) continue; // finished naturally between the sweep and the write
+      const message = `Run reaped by scheduler: wall-clock budget (${Math.round(budget.maxDurationMs / 1000)}s) exhausted.`;
+      await this.finishRun(run, "FAILED", null, message, "budget_exceeded", run.stepsExecuted, run.tokensUsed);
+      await this.deps.events.append({
+        runId: run.id,
+        type: "run_failed",
+        message,
+        payload: { class: "budget_exceeded", reaper: "tick" },
+      });
+      await this.deps.audit.log({
+        workspaceId: run.workspaceId,
+        actorId: null,
+        action: "agent.run.failed",
+        target: run.agentId,
+        metadata: { runId: run.id, class: "budget_exceeded", reaper: "tick" },
+      });
+      reaped += 1;
+    }
+    return reaped;
+  }
+
+  /**
+   * Dispatch recovery. A QUEUED row older than the grace window lost its
+   * in-memory job (e.g. platform restarted the instance right after the 202
+   * response). Re-enqueueing is safe: executeRun's QUEUED→RUNNING transition
+   * is the single-writer guard, so a row that is picked up twice still
+   * executes at most once.
+   */
+  private async rescueStaleQueued(now: Date): Promise<number> {
+    const stale = await this.deps.runs.listStaleQueued(new Date(now.getTime() - 120_000), 100);
+    let requeued = 0;
+    for (const run of stale) {
+      await this.deps.events.append({
+        runId: run.id,
+        type: "run_queued",
+        message: "Re-queued by scheduler sweep (dispatch recovery).",
+        payload: { requeue: true },
+      });
+      this.deps.queue.enqueue(run.id, async () => { await this.executeRun(run.id); });
+      requeued += 1;
+    }
+    if (requeued > 0) {
+      void this.deps.queue.drain().catch((err) => console.warn("[agents] drain:", (err as Error).message));
+    }
+    return requeued;
   }
 
   // ── Internals ───────────────────────────────────────────────────────────

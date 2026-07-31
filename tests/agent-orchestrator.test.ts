@@ -114,6 +114,16 @@ class FakeRuns implements AgentRunRepository {
   async listChildren(parentRunId: string) {
     return [...this.rows.values()].filter((r) => r.parentRunId === parentRunId);
   }
+  async listStaleRunning(olderThan: Date, take = 100) {
+    return [...this.rows.values()]
+      .filter((r) => r.status === "RUNNING" && r.startedAt && r.startedAt < olderThan)
+      .slice(0, take);
+  }
+  async listStaleQueued(olderThan: Date, take = 100) {
+    return [...this.rows.values()]
+      .filter((r) => r.status === "QUEUED" && r.createdAt < olderThan)
+      .slice(0, take);
+  }
   async countActiveByAgent(agentId: string) {
     return [...this.rows.values()].filter((r) => r.agentId === agentId && ["QUEUED", "RUNNING", "NEEDS_APPROVAL"].includes(r.status)).length;
   }
@@ -583,4 +593,68 @@ test("tick skips invalid crons without dying", async () => {
   const result = await h.orch.tick(now);
   assert.equal(result.dispatched, 0);
   assert.equal(result.skipped, 1);
+});
+
+test("tick reaps zombie RUNNING rows past their wall-clock budget, spares healthy ones", async () => {
+  const now = new Date("2026-08-01T10:16:12Z");
+  const h = makeHarness();
+  const agent = defaultAgent(h);
+
+  // Zombie: RUNNING for 10 minutes on a 60s wall-clock budget (its lambda died).
+  const zombie = await h.runs.create({
+    agentId: agent.id, workspaceId: WS, mode: "LIVE", triggerSource: "api",
+    budgetSnapshot: resolveBudget({ maxDurationMs: 60_000 }), goalSnapshot: "Investigate things.",
+  });
+  zombie.status = "RUNNING";
+  zombie.startedAt = new Date(now.getTime() - 10 * 60_000);
+  zombie.stepsExecuted = 4;
+
+  // Healthy: RUNNING for 30s on the default 15-minute budget — must survive.
+  const healthy = await h.runs.create({
+    agentId: agent.id, workspaceId: WS, mode: "LIVE", triggerSource: "api",
+    budgetSnapshot: resolveBudget({}), goalSnapshot: "Investigate things.",
+  });
+  healthy.status = "RUNNING";
+  healthy.startedAt = new Date(now.getTime() - 30_000);
+
+  const result = await h.orch.tick(now);
+  assert.equal(result.reaped, 1);
+
+  const reapedRow = (await h.runs.get(WS, zombie.id))!;
+  assert.equal(reapedRow.status, "FAILED");
+  assert.equal(reapedRow.errorClass, "budget_exceeded");
+  assert.match(reapedRow.error ?? "", /reaped by scheduler/i);
+  assert.ok(h.events.some((e) => e.runId === zombie.id && e.type === "run_failed"));
+  assert.ok(h.audit.some((a) => a.action === "agent.run.failed"), "reaper records an audit entry");
+
+  const spared = (await h.runs.get(WS, healthy.id))!;
+  assert.equal(spared.status, "RUNNING", "run inside its budget is not reaped");
+});
+
+test("tick requeues QUEUED rows past the grace window and drains them to completion", async () => {
+  const now = new Date("2026-08-01T10:16:12Z");
+  const h = makeHarness();
+  const agent = defaultAgent(h);
+
+  // Lost dispatch: created 5 minutes ago, never started.
+  const lost = await h.runs.create({
+    agentId: agent.id, workspaceId: WS, mode: "LIVE", triggerSource: "api",
+    budgetSnapshot: resolveBudget({}), goalSnapshot: "Investigate things.",
+  });
+  lost.createdAt = new Date(now.getTime() - 5 * 60_000);
+
+  // Fresh queue entry — must NOT be requeued.
+  const fresh = await h.runs.create({
+    agentId: agent.id, workspaceId: WS, mode: "LIVE", triggerSource: "api",
+    budgetSnapshot: resolveBudget({}), goalSnapshot: "Investigate things.",
+  });
+  fresh.createdAt = new Date(now.getTime() - 10_000);
+
+  const result = await h.orch.tick(now);
+  assert.equal(result.requeued, 1, "only the stale row is rescued");
+  assert.ok(h.events.some((e) => e.runId === lost.id && /Re-queued by scheduler sweep/i.test(e.message)));
+
+  await drainQueue(h);
+  assert.equal((await h.runs.get(WS, lost.id))!.status, "SUCCEEDED", "rescued run executes");
+  assert.equal((await h.runs.get(WS, fresh.id))!.status, "QUEUED", "fresh row untouched by the sweep");
 });

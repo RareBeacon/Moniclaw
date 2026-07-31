@@ -3,7 +3,7 @@ import { getAgentRuntime } from "@/lib/agents/runtime";
 import { errorResponse, fail, ok } from "@/lib/agents/api";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /**
  * POST /api/agents/tick — evaluate scheduled workers and dispatch due runs.

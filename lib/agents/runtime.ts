@@ -15,6 +15,8 @@ import {
   type AgentRateLimiterPort,
 } from "@agents/index";
 
+import { waitUntil } from "@vercel/functions";
+
 import { db } from "@/lib/db";
 import { audit, type AuditAction } from "@/lib/audit";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
@@ -36,6 +38,18 @@ class InProcessRunQueue implements AgentQueuePort {
   }
 
   async drain(): Promise<void> {
+    const work = this.pump();
+    // Serverless survival: on Vercel the function instance is frozen once the
+    // HTTP response completes, which would strand every queued run. waitUntil
+    // keeps the instance alive for the drain (bounded by the route's
+    // maxDuration — longer runs are checkpointed and requeued/reaped by tick).
+    // Outside Vercel this registers into a fallback context and is a no-op,
+    // so local `next start` keeps its original fire-and-forget behavior.
+    waitUntil(work.catch(() => {}));
+    return work;
+  }
+
+  private async pump(): Promise<void> {
     while (true) {
       while (this.pending.length > 0 && this.active.size < this.concurrency) {
         const item = this.pending.shift()!;

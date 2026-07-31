@@ -29,6 +29,7 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
     "@prisma/client": "^6.19.3",
+    "@vercel/functions": "^3.7.6",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.0",

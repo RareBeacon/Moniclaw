@@ -125,6 +125,24 @@ export class AgentRunPrismaRepository implements AgentRunRepository {
     return rows.map((r) => toRunRow(r as AgentRunRow));
   }
 
+  async listStaleRunning(olderThan: Date, take = 100): Promise<AgentRunRow[]> {
+    const rows = await this.db.agentRun.findMany({
+      where: { status: "RUNNING", startedAt: { not: null, lt: olderThan } },
+      orderBy: { startedAt: "asc" },
+      take: Math.min(take, 500),
+    });
+    return rows.map((r) => toRunRow(r as AgentRunRow));
+  }
+
+  async listStaleQueued(olderThan: Date, take = 100): Promise<AgentRunRow[]> {
+    const rows = await this.db.agentRun.findMany({
+      where: { status: "QUEUED", createdAt: { lt: olderThan } },
+      orderBy: { createdAt: "asc" },
+      take: Math.min(take, 500),
+    });
+    return rows.map((r) => toRunRow(r as AgentRunRow));
+  }
+
   async countActiveByAgent(agentId: string): Promise<number> {
     return this.db.agentRun.count({ where: { agentId, status: { in: ["QUEUED", "RUNNING", "NEEDS_APPROVAL"] } } });
   }

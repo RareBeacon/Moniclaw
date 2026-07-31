@@ -259,3 +259,30 @@ itDb("listSchedulable returns only active SCHEDULE agents with cron set", async 
   assert.ok(slugs.includes("nightly-worker"));
   assert.ok(!slugs.includes("paused-worker"));
 });
+
+itDb("listStaleRunning / listStaleQueued window + status filters", async () => {
+  const agent = await prisma.agent.findFirstOrThrow({ where: { workspaceId, slug: "research-worker" } });
+  const base = { agentId: agent.id, workspaceId, mode: "LIVE" as const, triggerSource: "test" };
+  const old = new Date(Date.now() - 10 * 60_000);
+  const recent = new Date(Date.now() - 5_000);
+
+  const zombie = await prisma.agentRun.create({ data: { ...base, status: "RUNNING", startedAt: old } });
+  const healthy = await prisma.agentRun.create({ data: { ...base, status: "RUNNING", startedAt: recent } });
+  const lostQueue = await prisma.agentRun.create({ data: { ...base, status: "QUEUED", createdAt: old } });
+  const freshQueue = await prisma.agentRun.create({ data: { ...base, status: "QUEUED", createdAt: recent } });
+  const terminal = await prisma.agentRun.create({ data: { ...base, status: "SUCCEEDED", startedAt: old, finishedAt: old } });
+
+  const cutoff = new Date(Date.now() - 60_000);
+  const staleRunning = await runs.listStaleRunning(cutoff);
+  const runningIds = staleRunning.map((r) => r.id);
+  assert.ok(runningIds.includes(zombie.id), "old RUNNING row is stale");
+  assert.ok(!runningIds.includes(healthy.id), "recent RUNNING row is fresh");
+  assert.ok(!runningIds.includes(terminal.id), "terminal rows never appear");
+
+  const staleQueued = await runs.listStaleQueued(new Date(Date.now() - 120_000));
+  const queuedIds = staleQueued.map((r) => r.id);
+  assert.ok(queuedIds.includes(lostQueue.id));
+  assert.ok(!queuedIds.includes(freshQueue.id));
+
+  await prisma.agentRun.deleteMany({ where: { id: { in: [zombie.id, healthy.id, lostQueue.id, freshQueue.id, terminal.id] } } });
+});
