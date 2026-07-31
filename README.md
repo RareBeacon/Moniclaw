@@ -19,7 +19,10 @@ documents, and the authentication flow UI.
 | Motion     | Framer Motion (scroll-triggered, reduced-motion friendly) |
 | Icons      | Lucide                                            |
 | Theming    | next-themes (light / dark / system)               |
-| Planned    | PostgreSQL · Prisma · Auth.js (Phase 2)           |
+| Auth       | Auth.js v5 — credentials (bcrypt) + Google/GitHub SSO, JWT sessions |
+| Database   | PostgreSQL · Prisma 6                             |
+| Validation | zod · server actions                              |
+| Email      | Resend HTTP API (dev console fallback)            |
 
 ## Getting started
 
@@ -37,21 +40,32 @@ npm run dev                  # http://localhost:3000
 | `npm run build`     | Production build                     |
 | `npm run start`     | Serve the production build           |
 | `npm run typecheck` | `tsc --noEmit` — strict type checking |
+| `npm run db:push`   | Push the Prisma schema to the DB     |
+| `npm run db:migrate`| Create/apply a dev migration         |
+| `npm run db:seed`   | Idempotent demo workspace (dev data) |
+| `npm run db:studio` | Prisma Studio                        |
+
+Demo credentials after seeding: `demo@moniclaw.dev` / `password123` (dev only).
 
 ## Project structure
 
 ```
 app/                    # Routes (App Router)
-  (auth)/               # login, signup, forgot-password, verify-email
-  blog/[slug]/          # Article pages (content lib driven, SSG)
-  legal/(privacy|terms) # Legal documents (data-driven renderer)
-  features/ pricing/ about/ docs/ contact/ blog/
+  (marketing)/          # Public site + (auth) flow pages — header/footer chrome
+  (dashboard)/          # Signed-in workspace — sidebar shell, no marketing chrome
+  api/auth/             # Auth.js route handler
 components/
   ui/                   # shadcn-style primitives (button, card, accordion …)
   layout/               # Header w/ mobile nav, footer, newsletter
   home/                 # Homepage sections (hero, demo replay, grid …)
+  dashboard/            # Side nav, status badges, agent/approval controls …
   auth/ pricing/ contact/ legal/ shared/
 lib/                    # Content + config (pricing, faqs, posts, legal, nav)
+  actions/              # Server actions (auth, workspace)
+  validations/          # zod schemas
+  db.ts  workspace.ts   # Prisma client · request-scoped data helpers
+auth.config.ts          # Edge-safe auth (middleware) · auth.ts Node config
+prisma/                 # Schema (users→workspaces→agents→runs→approvals) + seed
 ```
 
 ### Architecture notes
@@ -74,9 +88,13 @@ password · Verify email · Custom 404 · sitemap.xml · robots.txt
 
 ## Roadmap
 
-- **Phase 2**: Auth.js (email + Google + GitHub SSO), PostgreSQL + Prisma,
-  workspace dashboard, agent CRUD, run history.
-- **Phase 3**: Credential vault, approvals, live browser runtime, billing.
+- **Phase 1 (done)**: public website — marketing pages, docs, blog, legal,
+  auth UI, sitemap/robots, dark/light.
+- **Phase 2 (in progress)**: Auth.js (email + Google/GitHub SSO, verification,
+  password reset) · PostgreSQL + Prisma · workspace dashboard (agents CRUD,
+  runs ledger, approvals queue, settings) · middleware route protection.
+- **Phase 3**: execution plane — browser runtime fleet, credential vault write
+  path, run replay player, billing (credits metering is already modeled).
 
 ---
 

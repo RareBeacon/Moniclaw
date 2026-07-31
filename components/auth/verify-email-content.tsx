@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { Inbox, Loader2, MailOpen } from "lucide-react";
 
+import { resendVerification } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 
 const COOLDOWN_SECONDS = 45;
@@ -21,8 +22,7 @@ export function VerifyEmailContent({ email }: { email: string }) {
 
   const resend = async () => {
     setResending(true);
-    // Verification delivery ships with Auth.js next milestone.
-    await new Promise((r) => setTimeout(r, 800));
+    await resendVerification(email);
     setResending(false);
     setResendCount((c) => c + 1);
     setCooldown(COOLDOWN_SECONDS);

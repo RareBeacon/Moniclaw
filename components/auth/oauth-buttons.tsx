@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Github, Loader2 } from "lucide-react";
 
+import { authenticateOAuth } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 
 function GoogleIcon() {
@@ -28,64 +29,46 @@ function GoogleIcon() {
   );
 }
 
-/**
- * SSO entry points. Provider handshakes are wired to Auth.js in the backend
- * milestone; clicking previews the full flow with an explicit in-product note.
- */
 export function OAuthButtons({ mode }: { mode: "login" | "signup" }) {
-  const [pending, setPending] = React.useState<string | null>(null);
-  const [note, setNote] = React.useState<string | null>(null);
+  const [pendingProvider, setPending] = React.useState<string | null>(null);
 
-  const start = (provider: string) => {
+  const start = (provider: "google" | "github") => {
     setPending(provider);
-    setNote(null);
-    window.setTimeout(() => {
-      setPending(null);
-      setNote(
-        `${
-          provider === "google" ? "Google" : "GitHub"
-        } SSO activates with workspace authentication (rolling out now). Use your work email to ${
-          mode === "login" ? "sign in" : "reserve your account"
-        } meanwhile.`
-      );
-    }, 900);
+    // The server action redirects to the provider; errors surface via
+    // /api/auth error pages with our brand applied in a later milestone.
+    void authenticateOAuth(provider).catch(() => setPending(null));
   };
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={pending !== null}
-          onClick={() => start("google")}
-        >
-          {pending === "google" ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          ) : (
-            <GoogleIcon />
-          )}
-          Google
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={pending !== null}
-          onClick={() => start("github")}
-        >
-          {pending === "github" ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          ) : (
-            <Github className="h-4 w-4" aria-hidden />
-          )}
-          GitHub
-        </Button>
-      </div>
-      {note && (
-        <p role="status" className="rounded-lg bg-secondary px-3.5 py-2.5 text-xs leading-5 text-muted-foreground">
-          {note}
-        </p>
-      )}
+    <div className="grid grid-cols-2 gap-3">
+      <Button
+        type="button"
+        variant="outline"
+        disabled={pendingProvider !== null}
+        onClick={() => start("google")}
+        aria-label={`${mode === "login" ? "Sign in" : "Sign up"} with Google`}
+      >
+        {pendingProvider === "google" ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        ) : (
+          <GoogleIcon />
+        )}
+        Google
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={pendingProvider !== null}
+        onClick={() => start("github")}
+        aria-label={`${mode === "login" ? "Sign in" : "Sign up"} with GitHub`}
+      >
+        {pendingProvider === "github" ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        ) : (
+          <Github className="h-4 w-4" aria-hidden />
+        )}
+        GitHub
+      </Button>
     </div>
   );
 }

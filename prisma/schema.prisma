@@ -1,0 +1,265 @@
+// MoniClaw — primary data model
+// PostgreSQL. Auth.js-compatible identity tables plus the product domain:
+// workspaces → agents → runs → events/approvals.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Identity (Auth.js) ────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  // Null for OAuth-only accounts.
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+  approvals     Approval[] @relation("ApprovalDecider")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ── Workspaces ────────────────────────────────────────────────────────
+
+enum WorkspacePlan {
+  STARTER
+  GROWTH
+  BUSINESS
+  ENTERPRISE
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+model Workspace {
+  id        String        @id @default(cuid())
+  name      String
+  slug      String        @unique
+  plan      WorkspacePlan @default(STARTER)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  memberships  Membership[]
+  agents       Agent[]
+  agentsRuns   AgentRun[]
+  credentials  VaultEntry[]
+
+  @@map("workspaces")
+}
+
+model Membership {
+  id          String         @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        MembershipRole @default(OPERATOR)
+  createdAt   DateTime       @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+  @@map("memberships")
+}
+
+// ── Agents ────────────────────────────────────────────────────────────
+
+// Autonomy is earned in stages; promotion is explicit and audit-logged.
+enum AgentStatus {
+  DRAFT
+  SHADOW // dry-run against live data; actions simulated
+  SUPERVISED // live within tight caps; approvals broad
+  AUTONOMOUS // live within policy; approvals threshold-based
+  PAUSED
+  ARCHIVED
+}
+
+enum TriggerType {
+  MANUAL
+  SCHEDULE // cron expression in `schedule`
+  WEBHOOK
+  EVENT // e.g. inbox message, CRM change
+}
+
+model Agent {
+  id          String      @id @default(cuid())
+  workspaceId String
+  name        String
+  slug        String
+  description String // the job description, in plain language
+  category    String? // sales | support | finance | …
+  status      AgentStatus @default(DRAFT)
+  trigger     TriggerType @default(MANUAL)
+  schedule    String? // cron, when trigger = SCHEDULE
+  // Guardrail policy: approval thresholds, budgets, confidence floors.
+  policy      Json        @default("{}")
+  skills      String[]    @default([])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runs      AgentRun[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, status])
+  @@map("agents")
+}
+
+// ── Runs & evidence ───────────────────────────────────────────────────
+
+enum RunMode {
+  SHADOW
+  LIVE
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  NEEDS_APPROVAL
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+model AgentRun {
+  id           String    @id @default(cuid())
+  agentId      String
+  workspaceId  String // denormalized for fast workspace-scoped queries
+  mode         RunMode   @default(LIVE)
+  status       RunStatus @default(QUEUED)
+  triggerSource String   @default("manual") // manual | schedule | webhook | api
+  creditsUsed  Int       @default(0)
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  error        String?
+  createdAt    DateTime  @default(now())
+
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  events    RunEvent[]
+  approvals Approval[]
+
+  @@index([workspaceId, status, createdAt])
+  @@index([agentId, createdAt])
+  @@map("agent_runs")
+}
+
+model RunEvent {
+  id      String   @id @default(cuid())
+  runId   String
+  ts      DateTime @default(now())
+  // e.g. browser_action | api_call | note | approval | screenshot | error
+  type    String
+  message String
+  payload Json     @default("{}")
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, ts])
+  @@map("run_events")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model Approval {
+  id          String         @id @default(cuid())
+  runId       String
+  actionType  String // e.g. issue_refund | vendor_change | send_message
+  amountUsd   Decimal?       @db.Decimal(12, 2)
+  detail      Json           @default("{}")
+  requestedTo String // user email or @handle
+  status      ApprovalStatus @default(PENDING)
+  decidedById String?
+  decidedAt   DateTime?
+  note        String?
+  createdAt   DateTime       @default(now())
+
+  run       AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  decidedBy User?    @relation("ApprovalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("approvals")
+}
+
+// ── Credential vault (references only — ciphertext lives in the vault service) ──
+
+model VaultEntry {
+  id          String   @id @default(cuid())
+  workspaceId String
+  label       String
+  domain      String
+  scopes      String[] @default([])
+  // Pointer to the sealed secret in the vault service — never the secret itself.
+  secretRef   String
+  createdAt   DateTime @default(now())
+  rotatedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, domain, label])
+  @@map("vault_entries")
+}

@@ -4,13 +4,17 @@ import * as React from "react";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useFormState } from "react-dom";
 
+import { register, type AuthFormState } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OAuthButtons, OrDivider } from "@/components/auth/oauth-buttons";
 import { cn } from "@/lib/utils";
+
+const initialState: AuthFormState = {};
 
 function passwordStrength(pw: string): { score: number; label: string } {
   let score = 0;
@@ -24,59 +28,71 @@ function passwordStrength(pw: string): { score: number; label: string } {
   return { score: capped, label: pw ? labels[capped] : "" };
 }
 
-type FieldErrors = Partial<
-  Record<"name" | "email" | "password" | "terms", string>
->;
+type FieldErrors = Partial<Record<"name" | "email" | "password" | "terms", string>>;
 
 export function SignupForm() {
   const router = useRouter();
+  const [state, formAction] = useFormState(register, initialState);
   const [values, setValues] = React.useState({ name: "", email: "", password: "" });
   const [terms, setTerms] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
-  const [errors, setErrors] = React.useState<FieldErrors>({});
-  const [submitting, setSubmitting] = React.useState(false);
+  const [clientErrors, setClientErrors] = React.useState<FieldErrors>({});
+  const [pending, setPending] = React.useState(false);
   const strength = passwordStrength(values.password);
 
   const set = (field: keyof typeof values) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setValues((v) => ({ ...v, [field]: e.target.value }));
-    setErrors((errs) => ({ ...errs, [field]: undefined }));
   };
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const next: FieldErrors = {};
-    if (values.name.trim().length < 2) next.name = "Your full name, please.";
+  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const errs: FieldErrors = {};
+    if (values.name.trim().length < 2) errs.name = "Your full name, please.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email))
-      next.email = "Enter a valid work email.";
-    if (values.password.length < 8)
-      next.password = "Use at least 8 characters.";
-    if (!terms) next.terms = "Required — MoniClaw is a business service.";
-    setErrors(next);
-    if (Object.keys(next).length) return;
-
-    setSubmitting(true);
-    // Account creation + verification email ship with Auth.js next milestone.
-    await new Promise((r) => setTimeout(r, 900));
-    router.push(`/verify-email?email=${encodeURIComponent(values.email)}`);
+      errs.email = "Enter a valid work email.";
+    if (values.password.length < 8) errs.password = "Use at least 8 characters.";
+    if (!terms) errs.terms = "Required — MoniClaw is a business service.";
+    setClientErrors(errs);
+    if (Object.keys(errs).length) {
+      e.preventDefault();
+      return;
+    }
+    setPending(true);
   };
+
+  React.useEffect(() => {
+    if (state.error) setPending(false);
+  }, [state]);
+
+  React.useEffect(() => {
+    if (state.ok) {
+      router.push(`/verify-email?email=${encodeURIComponent(values.email)}`);
+    }
+  }, [state.ok, router, values.email]);
 
   return (
     <div>
       <OAuthButtons mode="signup" />
       <OrDivider />
-      <form onSubmit={submit} noValidate className="space-y-4">
+      <form action={formAction} onSubmit={onSubmit} noValidate className="space-y-4">
+        {state.error && (
+          <p role="alert" className="rounded-lg bg-destructive/10 px-3.5 py-2.5 text-xs font-medium text-destructive">
+            {state.error}
+          </p>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="signup-name">Full name</Label>
           <Input
             id="signup-name"
+            name="name"
             autoComplete="name"
             placeholder="Ada Lovelace"
             value={values.name}
             onChange={set("name")}
-            aria-invalid={!!errors.name}
+            aria-invalid={!!clientErrors.name}
           />
-          {errors.name && (
-            <p role="alert" className="text-xs text-destructive">{errors.name}</p>
+          {clientErrors.name && (
+            <p role="alert" className="text-xs text-destructive">{clientErrors.name}</p>
           )}
         </div>
 
@@ -84,15 +100,16 @@ export function SignupForm() {
           <Label htmlFor="signup-email">Work email</Label>
           <Input
             id="signup-email"
+            name="email"
             type="email"
             autoComplete="email"
             placeholder="you@company.com"
             value={values.email}
             onChange={set("email")}
-            aria-invalid={!!errors.email}
+            aria-invalid={!!clientErrors.email}
           />
-          {errors.email && (
-            <p role="alert" className="text-xs text-destructive">{errors.email}</p>
+          {clientErrors.email && (
+            <p role="alert" className="text-xs text-destructive">{clientErrors.email}</p>
           )}
         </div>
 
@@ -101,13 +118,13 @@ export function SignupForm() {
           <div className="relative">
             <Input
               id="signup-password"
+              name="password"
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
               placeholder="8+ characters"
               value={values.password}
               onChange={set("password")}
-              aria-invalid={!!errors.password}
-              aria-describedby="signup-password-hint"
+              aria-invalid={!!clientErrors.password}
               className="pr-10"
             />
             <button
@@ -120,12 +137,11 @@ export function SignupForm() {
             </button>
           </div>
           {values.password.length > 0 && (
-            <div id="signup-password-hint" className="flex items-center gap-2.5 pt-1">
+            <div className="flex items-center gap-2.5 pt-1" aria-hidden>
               <div className="flex flex-1 gap-1">
                 {[0, 1, 2, 3].map((i) => (
                   <span
                     key={i}
-                    aria-hidden
                     className={cn(
                       "h-1 flex-1 rounded-full transition-colors",
                       i < strength.score
@@ -142,8 +158,8 @@ export function SignupForm() {
               <span className="text-xs text-muted-foreground">{strength.label}</span>
             </div>
           )}
-          {errors.password && (
-            <p role="alert" className="text-xs text-destructive">{errors.password}</p>
+          {clientErrors.password && (
+            <p role="alert" className="text-xs text-destructive">{clientErrors.password}</p>
           )}
         </div>
 
@@ -152,12 +168,11 @@ export function SignupForm() {
             <Checkbox
               id="accept-terms"
               checked={terms}
-              onCheckedChange={(checked) => {
-                setTerms(checked);
-                setErrors((errs) => ({ ...errs, terms: undefined }));
+              onCheckedChange={(c) => {
+                setTerms(c);
+                setClientErrors((errs) => ({ ...errs, terms: undefined }));
               }}
               className="mt-0.5"
-              aria-invalid={!!errors.terms}
             />
             <Label
               htmlFor="accept-terms"
@@ -174,13 +189,13 @@ export function SignupForm() {
               .
             </Label>
           </div>
-          {errors.terms && (
-            <p role="alert" className="text-xs text-destructive">{errors.terms}</p>
+          {clientErrors.terms && (
+            <p role="alert" className="text-xs text-destructive">{clientErrors.terms}</p>
           )}
         </div>
 
-        <Button type="submit" size="lg" className="w-full" disabled={submitting}>
-          {submitting ? (
+        <Button type="submit" size="lg" className="w-full" disabled={pending}>
+          {pending ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               Creating your workspace…
