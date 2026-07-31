@@ -112,6 +112,9 @@ export async function POST(request: Request) {
 
     // ── Streaming branch (SSE) ──
     if (parsed.stream) {
+      // Fail fast with a proper HTTP status (not a mid-stream error event)
+      // when the workspace has no usable provider at all.
+      await runtime.router.ensureConfigured(ctx, { provider: parsed.provider });
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         async start(controller) {

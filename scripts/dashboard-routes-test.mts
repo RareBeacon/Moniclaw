@@ -151,6 +151,11 @@ async function main() {
       ["/dashboard/api-keys", "API keys"],
       ["/dashboard/settings", "Settings"],
       ["/dashboard/profile", "Profile"],
+      ["/dashboard/playground", "AI Playground"],
+      ["/dashboard/memory", "Memory Explorer"],
+      ["/dashboard/prompts", "Prompt Manager"],
+      ["/dashboard/workflows", "Workflow Builder"],
+      ["/dashboard/ai-providers", "AI Providers"],
     ];
 
     console.log("\nowner route sweep:");

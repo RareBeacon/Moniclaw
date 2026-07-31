@@ -145,6 +145,27 @@ export class ModelRouter {
     return adapter;
   }
 
+  /**
+   * Pre-flight guard for streaming endpoints: configuration errors should be
+   * HTTP-level failures, not mid-stream SSE error events. Call before opening
+   * a stream so the route can fail with a proper status code.
+   */
+  async ensureConfigured(
+    ctx: RoutedRequestContext,
+    options: { embedding?: boolean; provider?: string } = {}
+  ): Promise<void> {
+    const all = await this.source.resolve(ctx.workspaceId);
+    let candidates = options.embedding
+      ? all.filter((c) => c.provider === "gemini" || c.provider === "ollama")
+      : all;
+    if (options.provider) candidates = candidates.filter((c) => c.provider === options.provider);
+    if (!candidates.length) {
+      throw new NoProviderConfiguredError(
+        options.embedding ? `${ctx.workspaceId} (needs Gemini or Ollama for embeddings)` : ctx.workspaceId
+      );
+    }
+  }
+
   /** Buffered chat with retries + failover. */
   async chat(ctx: RoutedRequestContext, request: ChatRequest): Promise<ChatResponse> {
     const started = Date.now();

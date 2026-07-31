@@ -2,7 +2,7 @@
   "name": "moniclaw",
   "version": "0.1.0",
   "private": true,
-  "description": "MoniClaw — the AI Workforce Operating System. Public website & web app.",
+  "description": "MoniClaw \u2014 the AI Workforce Operating System. Public website & web app.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -21,7 +21,8 @@
     "smoke": "node scripts/smoke.mjs",
     "test:auth": "tsx scripts/auth-flow-test.mts",
     "test:routes": "tsx scripts/dashboard-routes-test.mts",
-    "test:flows": "tsx scripts/auth-email-flows-test.mts"
+    "test:flows": "tsx scripts/auth-email-flows-test.mts",
+    "test:ai": "tsx scripts/ai-api-e2e-test.mts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
