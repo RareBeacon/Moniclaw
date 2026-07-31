@@ -13,10 +13,23 @@ The production branch is `main` on GitHub. Vercel auto-deploys every push to
 
 ## 2 · Database
 
-1. Create a Postgres database (Postgres 14+; 17 verified).
+1. Create a Postgres database (Postgres 14+; 17 verified) **with the
+   [`pgvector`](https://github.com/pgvector/pgvector) extension available** —
+   Phase 3's semantic recall stores 768-dim embeddings
+   (`Neon` has it preinstalled; self-hosted: `apt install postgresql-17-pgvector`).
+   The Phase 3 migration runs `CREATE EXTENSION IF NOT EXISTS vector`, so the
+   extension package only needs to exist on the server — the migration enables
+   it in the database itself.
 2. Copy the pooled connection string — this becomes `DATABASE_URL`.
 3. Note: Prisma migrations run **outside** the Vercel build step (see §4), so
    the build never needs database credentials and preview builds stay safe.
+
+> **Maintainer note — hand-kept indexes.** The `embedding HNSW` cosine indexes
+> on `memory_records` / `knowledge_chunks` / `embedding_cache` live in the
+> migration SQL only; Prisma's datamodel can't see vector indexes. When
+> generating future migrations via `prisma migrate diff`, it will emit
+> `DROP INDEX` statements for them — **filter those lines out** of the
+> generated SQL, exactly as the Phase 3 migrations did.
 
 ## 3 · Environment variables
 

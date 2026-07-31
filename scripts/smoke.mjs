@@ -127,6 +127,56 @@ async function main() {
   const asset = await get("/api/assets/00000000-0000-0000-0000-000000000000");
   report(asset.status === 401, "asset route requires authentication", `→ ${asset.status}`);
 
+  console.log("\nAI surfaces — middleware guards (anonymous):");
+  for (const path of [
+    "/dashboard/playground",
+    "/dashboard/memory",
+    "/dashboard/prompts",
+    "/dashboard/workflows",
+    "/dashboard/ai-providers",
+  ]) {
+    const res = await get(path);
+    const location = res.headers.get("location") ?? "";
+    report(
+      (res.status === 302 || res.status === 307) && location.includes("/login"),
+      `${path} redirects to login`,
+      `${res.status}`
+    );
+  }
+
+  console.log("\nAI REST API — unauthenticated rejection:");
+  for (const [method, path] of [
+    ["POST", "/api/ai/chat"],
+    ["GET", "/api/ai/conversations"],
+    ["GET", "/api/ai/memory"],
+    ["POST", "/api/ai/embeddings"],
+    ["GET", "/api/ai/knowledge/documents"],
+    ["GET", "/api/ai/providers"],
+    ["GET", "/api/ai/workflows"],
+    ["GET", "/api/ai/usage"],
+    ["GET", "/api/cron/memory-sweep"],
+  ]) {
+    try {
+      const res = await fetch(`${BASE}${path}`, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        ...(method === "POST" ? { body: "{}" } : {}),
+      });
+      // 401 (no principal) or 503 (cron without CRON_SECRET) — both are the
+      // designed "closed door"; a 200/301/404 here would be a wiring bug.
+      const closed = res.status === 401 || (path.includes("cron") && res.status === 503);
+      report(closed, `${method} ${path} rejects anonymous`, `→ ${res.status}`);
+    } catch (error) {
+      report(false, `${method} ${path} rejects anonymous`, String(error));
+    }
+  }
+
+  console.log("\nAI REST API — malformed bearer key:");
+  const badKey = await fetch(`${BASE}/api/ai/usage`, {
+    headers: { Authorization: "Bearer msk_not_a_real_key" },
+  });
+  report(badKey.status === 401, "GET /api/ai/usage rejects unknown msk_ key", `→ ${badKey.status}`);
+
   console.log("\n404 handling:");
   await expectStatus("unknown route 404s", "/definitely-not-a-page-9e3f", 404);
 
