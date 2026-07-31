@@ -102,3 +102,65 @@ export async function sendPasswordResetEmail(email: string, token: string) {
     ),
   });
 }
+
+export async function sendWorkspaceInvitationEmail({
+  email,
+  token,
+  workspaceName,
+  inviterName,
+  role,
+}: {
+  email: string;
+  token: string;
+  workspaceName: string;
+  inviterName: string;
+  role: string;
+}) {
+  const url = `${appUrl()}/invite/${token}`;
+  const roleLabel = role.charAt(0) + role.slice(1).toLowerCase();
+  await sendEmail({
+    to: email,
+    subject: `${inviterName} invited you to ${workspaceName} on MoniClaw`,
+    html: emailShell(
+      "You're invited",
+      `<p style="font-size:14px;line-height:22px;color:#3f3f46">
+         <strong>${escapeHtml(inviterName)}</strong> invited you to join
+         <strong>${escapeHtml(workspaceName)}</strong> as ${roleLabel}.
+         The invitation expires in 7 days.
+       </p>
+       <p style="margin:24px 0"><a href="${url}" style="${BUTTON}">Accept invitation</a></p>
+       <p style="font-size:12px;color:#71717a;word-break:break-all">Or paste this link: ${url}</p>
+       <p style="font-size:12px;color:#71717a">
+         New to MoniClaw? The link walks you through creating your account with this email —
+         the invitation will be waiting.
+       </p>`
+    ),
+  });
+}
+
+/** Passwordless sign-in — transport ready for the magic-link milestone. */
+export async function sendMagicLinkEmail(email: string, token: string) {
+  const url = `${appUrl()}/login/magic?email=${encodeURIComponent(
+    email
+  )}&token=${encodeURIComponent(token)}`;
+  await sendEmail({
+    to: email,
+    subject: "Your MoniClaw sign-in link",
+    html: emailShell(
+      "Sign in to MoniClaw",
+      `<p style="font-size:14px;line-height:22px;color:#3f3f46">Here's your one-time sign-in link. It expires in 30 minutes and works once.</p>
+       <p style="margin:24px 0"><a href="${url}" style="${BUTTON}">Sign in</a></p>
+       <p style="font-size:12px;color:#71717a;word-break:break-all">Or paste this link: ${url}</p>
+       <p style="font-size:12px;color:#71717a">Didn't request this? You can ignore it — the link only works for this inbox.</p>`
+    ),
+  });
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}

@@ -1,0 +1,146 @@
+#!/usr/bin/env node
+/**
+ * HTTP smoke suite — verifies routing, middleware guards, headers, and the
+ * auth API surface against a running server.
+ *
+ * Usage:  BASE_URL=http://localhost:3000 npm run smoke
+ *
+ * Database note: one check (the invite page) renders from Postgres. When
+ * DATABASE_URL is set the script probes that host:port over TCP first; if
+ * the database is unreachable the check is reported as SKIPPED instead of
+ * failed, because a DB outage would legitimately 500 that page.
+ */
+import net from "node:net";
+
+const BASE = process.env.BASE_URL ?? "http://localhost:3000";
+
+let failures = 0;
+let passes = 0;
+
+function report(ok, name, detail = "") {
+  if (ok) {
+    passes++;
+    console.log(`  ✓ ${name}${detail ? `  (${detail})` : ""}`);
+  } else {
+    failures++;
+    console.error(`  ✗ ${name}${detail ? `  (${detail})` : ""}`);
+  }
+}
+
+function skip(name, reason) {
+  passes++;
+  console.log(`  ↷ ${name} — SKIPPED (${reason})`);
+}
+
+function probeDatabase(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const raw = process.env.DATABASE_URL;
+    if (!raw) return resolve(false);
+    let host = "localhost";
+    let port = 5432;
+    try {
+      const url = new URL(raw);
+      host = url.hostname || host;
+      port = Number(url.port) || port;
+    } catch {
+      return resolve(false);
+    }
+    const socket = net.connect({ host, port });
+    const done = (ok) => {
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => done(true));
+    socket.once("timeout", () => done(false));
+    socket.once("error", () => done(false));
+  });
+}
+
+async function get(path, opts = {}) {
+  const res = await fetch(`${BASE}${path}`, { redirect: "manual", ...opts });
+  return res;
+}
+
+async function expectStatus(name, path, status) {
+  try {
+    const res = await get(path);
+    report(res.status === status, name, `GET ${path} → ${res.status}`);
+    return res;
+  } catch (error) {
+    report(false, name, String(error));
+    return null;
+  }
+}
+
+async function main() {
+  console.log(`\nSmoke testing ${BASE}\n`);
+
+  console.log("marketing routes:");
+  for (const path of [
+    "/",
+    "/features",
+    "/pricing",
+    "/about",
+    "/docs",
+    "/blog",
+    "/blog/the-end-of-swivel-chair-work",
+    "/contact",
+    "/legal/privacy",
+    "/legal/terms",
+  ]) {
+    await expectStatus(`200 ${path}`, path, 200);
+  }
+
+  console.log("\nauth pages:");
+  for (const path of ["/login", "/signup", "/forgot-password", "/verify-email"]) {
+    await expectStatus(`200 ${path}`, path, 200);
+  }
+  const dbReachable = await probeDatabase();
+  if (dbReachable) {
+    await expectStatus("invite page renders for bogus token", "/invite/not-a-real-token", 200);
+  } else {
+    skip("invite page renders for bogus token", "DATABASE_URL unset or database unreachable");
+  }
+
+  console.log("\nmiddleware guards (anonymous):");
+  for (const path of ["/dashboard", "/dashboard/agents", "/dashboard/members", "/dashboard/profile"]) {
+    const res = await get(path);
+    const location = res.headers.get("location") ?? "";
+    report(
+      (res.status === 302 || res.status === 307) && location.includes("/login"),
+      `${path} redirects to login`,
+      `${res.status} → ${location.replace(BASE, "")}`
+    );
+  }
+
+  console.log("\nauth API surface:");
+  const providers = await get("/api/auth/providers");
+  const providersJson = providers.status === 200 ? await providers.json() : {};
+  report(providers.status === 200, "GET /api/auth/providers → 200");
+  report("credentials" in providersJson, "credentials provider registered");
+  const csrf = await get("/api/auth/csrf");
+  const csrfJson = csrf.status === 200 ? await csrf.json() : {};
+  report(!!csrfJson.csrfToken, "GET /api/auth/csrf issues a token");
+
+  console.log("\nasset authorization:");
+  const asset = await get("/api/assets/00000000-0000-0000-0000-000000000000");
+  report(asset.status === 401, "asset route requires authentication", `→ ${asset.status}`);
+
+  console.log("\n404 handling:");
+  await expectStatus("unknown route 404s", "/definitely-not-a-page-9e3f", 404);
+
+  console.log("\nsecurity headers:");
+  const home = await get("/");
+  report(home.headers.get("x-content-type-options") === "nosniff", "x-content-type-options: nosniff");
+  report(home.headers.get("x-frame-options") === "SAMEORIGIN", "x-frame-options: SAMEORIGIN");
+  report(
+    (home.headers.get("referrer-policy") ?? "").includes("strict-origin"),
+    "referrer-policy set"
+  );
+
+  console.log(`\n${passes} passed, ${failures} failed\n`);
+  process.exit(failures > 0 ? 1 : 0);
+}
+
+main();

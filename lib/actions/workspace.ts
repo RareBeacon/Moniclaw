@@ -2,45 +2,146 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 
 import { signOut } from "@/auth";
 import { db } from "@/lib/db";
-import { slugify } from "@/lib/slug";
-import { getCurrentUser, getPrimaryWorkspace } from "@/lib/workspace";
+import { audit, AUDIT_ACTIONS } from "@/lib/audit";
+import { slugify, uniqueSuffix } from "@/lib/slug";
+import {
+  checkPermission,
+  getCurrentUser,
+  resolveWorkspaceContext,
+} from "@/lib/workspace";
+import {
+  agentStatusSchema,
+  createAgentSchema,
+  deleteWorkspaceSchema,
+  workspaceSettingsSchema,
+} from "@/lib/validations/workspace";
 
 export type ActionState = { error?: string; ok?: boolean };
 
-async function requireWorkspace() {
+// ── Workspace lifecycle ──────────────────────────────────────────────
+
+export async function createWorkspace(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
   const user = await getCurrentUser();
-  if (!user) return { error: "Not authenticated." as const };
+  if (!user) return { error: "Not authenticated." };
 
-  const primary = await getPrimaryWorkspace(user.id);
-  if (!primary) return { error: "No workspace found for this account." as const };
+  const name = String(formData.get("name") ?? "").trim();
+  if (name.length < 2 || name.length > 60) {
+    return { error: "Workspace names must be 2–60 characters." };
+  }
 
-  return { user, ...primary };
+  const slug = `${slugify(name) || "workspace"}-${uniqueSuffix()}`;
+  await db.workspace.create({
+    data: {
+      name,
+      slug,
+      memberships: { create: { userId: user.id, role: "OWNER" } },
+    },
+  });
+
+  revalidatePath("/dashboard");
+  redirect("/dashboard");
+}
+
+export async function updateWorkspaceSettings(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
+
+  const denied = checkPermission(ctx, "settings.edit");
+  if (denied) return { error: denied };
+
+  const parsed = workspaceSettingsSchema.safeParse({
+    name: formData.get("name"),
+    slug: formData.get("slug"),
+    brandColor: formData.get("brandColor"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Check your inputs." };
+  }
+
+  const { name, slug, brandColor } = parsed.data;
+
+  if (slug !== ctx.workspace.slug) {
+    const taken = await db.workspace.findUnique({ where: { slug } });
+    if (taken) return { error: "That slug is taken. Try another." };
+  }
+
+  await db.workspace.update({
+    where: { id: ctx.workspace.id },
+    data: { name, slug, brandColor },
+  });
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    actorId: ctx.user.id,
+    action: AUDIT_ACTIONS.settingsUpdate,
+    targetType: "workspace",
+    targetId: ctx.workspace.id,
+    metadata: { name, slug, brandColor },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/settings");
+  return { ok: true };
+}
+
+export async function deleteWorkspace(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
+
+  const denied = checkPermission(ctx, "workspace.delete");
+  if (denied) return { error: denied };
+
+  const parsed = deleteWorkspaceSchema.safeParse({
+    confirmSlug: formData.get("confirmSlug"),
+  });
+  if (!parsed.success || parsed.data.confirmSlug !== ctx.workspace.slug) {
+    return { error: `Type the workspace slug (${ctx.workspace.slug}) to confirm.` };
+  }
+
+  await db.workspace.update({
+    where: { id: ctx.workspace.id },
+    data: { deletedAt: new Date() },
+  });
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    actorId: ctx.user.id,
+    action: AUDIT_ACTIONS.workspaceDelete,
+    targetType: "workspace",
+    targetId: ctx.workspace.id,
+    metadata: { slug: ctx.workspace.slug },
+  });
+
+  revalidatePath("/dashboard");
+  redirect("/dashboard");
 }
 
 // ── Agents ───────────────────────────────────────────────────────────
-
-const createAgentSchema = z.object({
-  name: z.string().trim().min(2, "Give the agent a name.").max(60),
-  category: z.string().trim().max(40).optional(),
-  description: z
-    .string()
-    .trim()
-    .min(30, "A useful job description needs at least a couple of sentences (30+ characters).")
-    .max(2000),
-  trigger: z.enum(["MANUAL", "SCHEDULE", "WEBHOOK"]),
-  schedule: z.string().trim().max(60).optional(),
-});
 
 export async function createAgent(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const ctx = await requireWorkspace();
-  if ("error" in ctx) return { error: ctx.error };
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
+
+  const denied = checkPermission(ctx, "agents.create");
+  if (denied) return { error: denied };
 
   const parsed = createAgentSchema.safeParse({
     name: formData.get("name"),
@@ -54,7 +155,6 @@ export async function createAgent(
   }
 
   const { name, category, description, trigger, schedule } = parsed.data;
-
   if (trigger === "SCHEDULE" && !schedule) {
     return { error: "Scheduled agents need a cron expression." };
   }
@@ -71,7 +171,7 @@ export async function createAgent(
     slug = `${base}-${attempt}`;
   }
 
-  await db.agent.create({
+  const agent = await db.agent.create({
     data: {
       workspaceId: ctx.workspace.id,
       name,
@@ -80,7 +180,6 @@ export async function createAgent(
       description,
       trigger,
       schedule: trigger === "SCHEDULE" ? schedule : null,
-      // Every agent starts as a draft; shadow mode is the first promotion.
       status: "DRAFT",
       policy: {
         approvals: [{ when: "amount > 0", to: ctx.user.email }],
@@ -89,22 +188,33 @@ export async function createAgent(
     },
   });
 
+  await audit({
+    workspaceId: ctx.workspace.id,
+    actorId: ctx.user.id,
+    action: AUDIT_ACTIONS.agentCreate,
+    targetType: "agent",
+    targetId: agent.id,
+    metadata: { name, trigger },
+  });
+
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/agents");
   redirect("/dashboard/agents");
 }
 
-const agentStatusTransitions = z.enum(["SHADOW", "SUPERVISED", "AUTONOMOUS", "PAUSED"]);
-
 export async function setAgentStatus(agentId: string, status: string): Promise<ActionState> {
-  const ctx = await requireWorkspace();
-  if ("error" in ctx) return { error: ctx.error };
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
 
-  const parsed = agentStatusTransitions.safeParse(status);
+  const denied = checkPermission(ctx, "agents.promote");
+  if (denied) return { error: denied };
+
+  const parsed = agentStatusSchema.safeParse(status);
   if (!parsed.success) return { error: "Unsupported status." };
 
   const agent = await db.agent.findFirst({
-    where: { id: agentId, workspaceId: ctx.workspace.id },
+    where: { id: agentId, workspaceId: ctx.workspace.id, deletedAt: null },
   });
   if (!agent) return { error: "Agent not found in this workspace." };
 
@@ -113,24 +223,69 @@ export async function setAgentStatus(agentId: string, status: string): Promise<A
     data: { status: parsed.data },
   });
 
+  await audit({
+    workspaceId: ctx.workspace.id,
+    actorId: ctx.user.id,
+    action: AUDIT_ACTIONS.agentPromote,
+    targetType: "agent",
+    targetId: agent.id,
+    metadata: { from: agent.status, to: parsed.data },
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/agents");
+  return { ok: true };
+}
+
+export async function archiveAgent(agentId: string): Promise<ActionState> {
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
+
+  const denied = checkPermission(ctx, "agents.archive");
+  if (denied) return { error: denied };
+
+  const agent = await db.agent.findFirst({
+    where: { id: agentId, workspaceId: ctx.workspace.id, deletedAt: null },
+  });
+  if (!agent) return { error: "Agent not found in this workspace." };
+
+  await db.agent.update({
+    where: { id: agent.id },
+    data: { status: "ARCHIVED", deletedAt: new Date() },
+  });
+
+  await audit({
+    workspaceId: ctx.workspace.id,
+    actorId: ctx.user.id,
+    action: AUDIT_ACTIONS.agentArchive,
+    targetType: "agent",
+    targetId: agent.id,
+    metadata: { name: agent.name },
+  });
+
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/agents");
   return { ok: true };
 }
 
 export async function startRun(agentId: string): Promise<ActionState> {
-  const ctx = await requireWorkspace();
-  if ("error" in ctx) return { error: ctx.error };
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
+
+  const denied = checkPermission(ctx, "agents.run");
+  if (denied) return { error: denied };
 
   const agent = await db.agent.findFirst({
-    where: { id: agentId, workspaceId: ctx.workspace.id },
+    where: { id: agentId, workspaceId: ctx.workspace.id, deletedAt: null },
   });
   if (!agent) return { error: "Agent not found in this workspace." };
   if (agent.status === "DRAFT" || agent.status === "PAUSED" || agent.status === "ARCHIVED") {
     return { error: "Promote the agent out of DRAFT (shadow mode is the first step) before running it." };
   }
 
-  await db.agentRun.create({
+  const run = await db.agentRun.create({
     data: {
       agentId: agent.id,
       workspaceId: ctx.workspace.id,
@@ -146,6 +301,15 @@ export async function startRun(agentId: string): Promise<ActionState> {
     },
   });
 
+  await audit({
+    workspaceId: ctx.workspace.id,
+    actorId: ctx.user.id,
+    action: AUDIT_ACTIONS.agentRun,
+    targetType: "run",
+    targetId: run.id,
+    metadata: { agent: agent.name, mode: agent.status === "SHADOW" ? "SHADOW" : "LIVE" },
+  });
+
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/runs");
   return { ok: true };
@@ -158,8 +322,12 @@ export async function decideApproval(
   decision: "APPROVED" | "REJECTED",
   note?: string
 ): Promise<ActionState> {
-  const ctx = await requireWorkspace();
-  if ("error" in ctx) return { error: ctx.error };
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
+
+  const denied = checkPermission(ctx, "approvals.decide");
+  if (denied) return { error: denied };
 
   const approval = await db.approval.findFirst({
     where: { id: approvalId, status: "PENDING", run: { workspaceId: ctx.workspace.id } },
@@ -188,37 +356,26 @@ export async function decideApproval(
     db.agentRun.update({
       where: { id: approval.runId },
       data: {
-        status: decision === "APPROVED" ? "RUNNING" : approval.run.status === "NEEDS_APPROVAL" ? "CANCELED" : approval.run.status,
+        status:
+          decision === "APPROVED"
+            ? "RUNNING"
+            : approval.run.status === "NEEDS_APPROVAL"
+              ? "CANCELED"
+              : approval.run.status,
       },
     }),
   ]);
 
-  revalidatePath("/dashboard/approvals");
-  revalidatePath("/dashboard");
-  return { ok: true };
-}
-
-// ── Workspace settings ───────────────────────────────────────────────
-
-export async function renameWorkspace(
-  _prev: ActionState,
-  formData: FormData
-): Promise<ActionState> {
-  const ctx = await requireWorkspace();
-  if ("error" in ctx) return { error: ctx.error };
-  if (ctx.role === "VIEWER") return { error: "Viewers can't change workspace settings." };
-
-  const name = String(formData.get("name") ?? "").trim();
-  if (name.length < 2 || name.length > 60) {
-    return { error: "Workspace names must be 2–60 characters." };
-  }
-
-  await db.workspace.update({
-    where: { id: ctx.workspace.id },
-    data: { name },
+  await audit({
+    workspaceId: ctx.workspace.id,
+    actorId: ctx.user.id,
+    action: AUDIT_ACTIONS.approvalDecide,
+    targetType: "approval",
+    targetId: approval.id,
+    metadata: { actionType: approval.actionType, decision, runId: approval.runId },
   });
 
-  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/approvals");
   revalidatePath("/dashboard");
   return { ok: true };
 }

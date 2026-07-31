@@ -41,6 +41,7 @@ async function main() {
   }
   const workspaceId = membership!.workspace.id;
 
+  // ── Agents ─────────────────────────────────────────────────────────
   const mara = await db.agent.upsert({
     where: { workspaceId_slug: { workspaceId, slug: "mara-ar" } },
     update: {},
@@ -79,6 +80,7 @@ async function main() {
     },
   });
 
+  // ── Runs, events, approvals ────────────────────────────────────────
   const hasRuns = await db.agentRun.count({ where: { workspaceId } });
   if (hasRuns === 0) {
     const succeeded = await db.agentRun.create({
@@ -146,7 +148,30 @@ async function main() {
       },
     });
 
-    console.info(`Seeded run: ${succeeded.id} (+ approval flow)`);
+    console.info(`Seeded runs (incl. ${succeeded.id}) + pending approval`);
+  }
+
+  // ── Knowledge ──────────────────────────────────────────────────────
+  const hasKnowledge = await db.knowledgeEntry.count({ where: { workspaceId } });
+  if (hasKnowledge === 0) {
+    await db.knowledgeEntry.createMany({
+      data: [
+        {
+          workspaceId,
+          title: "Refund policy — approval matrix",
+          body: "Auto-approve refunds up to $50 within policy. $50–$200 requires Finance (Priya). Above $200 always requires the VP of Finance. Duplicate charges are always refundable regardless of amount — escalate with evidence rather than auto-approving.",
+          tags: ["finance", "refunds", "policy"],
+          createdById: user.id,
+        },
+        {
+          workspaceId,
+          title: "Vendor portal quirks — Northwind",
+          body: "Northwind's portal renamed 'Invoices' to 'Billing Center' in May 2026. Session expiry is 10 minutes of idle time. The export button only appears after scrolling the table into view. Mara handles all three; flag any layout change beyond these.",
+          tags: ["vendors", "portal", "notes"],
+          createdById: user.id,
+        },
+      ],
+    });
   }
 
   console.info(`Seed complete → ${email} / password123 (dev only)`);

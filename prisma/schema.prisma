@@ -1,6 +1,13 @@
-// MoniClaw — primary data model
-// PostgreSQL. Auth.js-compatible identity tables plus the product domain:
-// workspaces → agents → runs → events/approvals.
+// MoniClaw — primary data model (v2)
+// PostgreSQL · Prisma 6
+//
+// Conventions:
+//  • UUID primary keys across the board
+//  • createdAt/updatedAt on all domain entities
+//  • Soft deletes (deletedAt) on User, Workspace, Agent, KnowledgeEntry
+//  • Every tenant-scoped table carries workspaceId + composite indexes
+//  • Referential rules are explicit: tenant data cascades with the tenant;
+//    actor references use SetNull so audit/history rows survive deletions
 
 generator client {
   provider = "prisma-client-js"
@@ -14,37 +21,48 @@ datasource db {
 // ── Identity (Auth.js) ────────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
+  id             String    @id @default(uuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
   // Null for OAuth-only accounts.
-  passwordHash  String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  passwordHash   String?
+  // Incremented on "sign out everywhere"; issued tokens below this
+  // version are rejected in getCurrentUser().
+  sessionVersion Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
-  accounts      Account[]
-  sessions      Session[]
-  memberships   Membership[]
-  approvals     Approval[] @relation("ApprovalDecider")
+  accounts         Account[]
+  sessions         Session[]
+  memberships      Membership[]
+  approvals        Approval[]            @relation("ApprovalDecider")
+  loginEvents      LoginEvent[]
+  auditLogs        AuditLog[]            @relation("AuditActor")
+  invitationsSent  WorkspaceInvitation[] @relation("InvitationInviter")
+  knowledgeEntries KnowledgeEntry[]
+  assets           Asset[]
 
+  @@index([deletedAt])
   @@map("users")
 }
 
 model Account {
-  id                String  @id @default(cuid())
+  id                String   @id @default(uuid())
   userId            String
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?  @db.Text
   session_state     String?
+  createdAt         DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -54,7 +72,7 @@ model Account {
 }
 
 model Session {
-  id           String   @id @default(cuid())
+  id           String   @id @default(uuid())
   sessionToken String   @unique
   userId       String
   expires      DateTime
@@ -66,7 +84,7 @@ model Session {
 }
 
 model VerificationToken {
-  identifier String
+  identifier String // e.g. "verify:email" | "reset:email" | "magic:email"
   token      String
   expires    DateTime
 
@@ -83,42 +101,81 @@ enum WorkspacePlan {
   ENTERPRISE
 }
 
+// RBAC roles — capabilities are defined in lib/permissions.ts (the single
+// source of truth the UI and every server action consult).
 enum MembershipRole {
   OWNER
   ADMIN
-  OPERATOR
+  MANAGER
+  MEMBER
   VIEWER
 }
 
 model Workspace {
-  id        String        @id @default(cuid())
-  name      String
-  slug      String        @unique
-  plan      WorkspacePlan @default(STARTER)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id         String        @id @default(uuid())
+  name       String
+  slug       String        @unique
+  plan       WorkspacePlan @default(STARTER)
+  // Branding: a preset from the approved palette (violet | indigo | blue |
+  // emerald | amber | rose). Rendered on workspace chrome + invitations.
+  brandColor String        @default("violet")
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  deletedAt  DateTime?
 
-  memberships  Membership[]
-  agents       Agent[]
-  agentsRuns   AgentRun[]
-  credentials  VaultEntry[]
+  memberships Membership[]
+  invitations WorkspaceInvitation[]
+  agents      Agent[]
+  agentsRuns  AgentRun[]
+  credentials VaultEntry[]
+  knowledge   KnowledgeEntry[]
+  assets      Asset[]
+  auditLogs   AuditLog[]
 
+  @@index([deletedAt])
   @@map("workspaces")
 }
 
 model Membership {
-  id          String         @id @default(cuid())
+  id          String         @id @default(uuid())
   userId      String
   workspaceId String
-  role        MembershipRole @default(OPERATOR)
+  role        MembershipRole @default(MEMBER)
   createdAt   DateTime       @default(now())
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
-  @@index([workspaceId])
+  @@index([workspaceId, role])
   @@map("memberships")
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+model WorkspaceInvitation {
+  id          String           @id @default(uuid())
+  workspaceId String
+  email       String
+  role        MembershipRole   @default(MEMBER)
+  token       String           @unique
+  status      InvitationStatus @default(PENDING)
+  invitedById String?
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime         @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  inviter   User?     @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, email])
+  @@index([email, status])
+  @@map("workspace_invitations")
 }
 
 // ── Agents ────────────────────────────────────────────────────────────
@@ -130,7 +187,7 @@ enum AgentStatus {
   SUPERVISED // live within tight caps; approvals broad
   AUTONOMOUS // live within policy; approvals threshold-based
   PAUSED
-  ARCHIVED
+  ARCHIVED // soft-deleted: hidden from lists, retained for evidence
 }
 
 enum TriggerType {
@@ -141,26 +198,26 @@ enum TriggerType {
 }
 
 model Agent {
-  id          String      @id @default(cuid())
+  id          String      @id @default(uuid())
   workspaceId String
   name        String
   slug        String
-  description String // the job description, in plain language
-  category    String? // sales | support | finance | …
+  description String
+  category    String?
   status      AgentStatus @default(DRAFT)
   trigger     TriggerType @default(MANUAL)
-  schedule    String? // cron, when trigger = SCHEDULE
-  // Guardrail policy: approval thresholds, budgets, confidence floors.
+  schedule    String?
   policy      Json        @default("{}")
   skills      String[]    @default([])
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
 
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   runs      AgentRun[]
 
   @@unique([workspaceId, slug])
-  @@index([workspaceId, status])
+  @@index([workspaceId, status, deletedAt])
   @@map("agents")
 }
 
@@ -181,20 +238,20 @@ enum RunStatus {
 }
 
 model AgentRun {
-  id           String    @id @default(cuid())
-  agentId      String
-  workspaceId  String // denormalized for fast workspace-scoped queries
-  mode         RunMode   @default(LIVE)
-  status       RunStatus @default(QUEUED)
-  triggerSource String   @default("manual") // manual | schedule | webhook | api
-  creditsUsed  Int       @default(0)
-  startedAt    DateTime?
-  finishedAt   DateTime?
-  error        String?
-  createdAt    DateTime  @default(now())
+  id            String    @id @default(uuid())
+  agentId       String
+  workspaceId   String // denormalized for tenant-scoped queries (indexed below)
+  mode          RunMode   @default(LIVE)
+  status        RunStatus @default(QUEUED)
+  triggerSource String    @default("manual")
+  creditsUsed   Int       @default(0)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  error         String?
+  createdAt     DateTime  @default(now())
 
-  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   events    RunEvent[]
   approvals Approval[]
 
@@ -204,7 +261,7 @@ model AgentRun {
 }
 
 model RunEvent {
-  id      String   @id @default(cuid())
+  id      String   @id @default(uuid())
   runId   String
   ts      DateTime @default(now())
   // e.g. browser_action | api_call | note | approval | screenshot | error
@@ -226,12 +283,12 @@ enum ApprovalStatus {
 }
 
 model Approval {
-  id          String         @id @default(cuid())
+  id          String         @id @default(uuid())
   runId       String
-  actionType  String // e.g. issue_refund | vendor_change | send_message
+  actionType  String
   amountUsd   Decimal?       @db.Decimal(12, 2)
   detail      Json           @default("{}")
-  requestedTo String // user email or @handle
+  requestedTo String
   status      ApprovalStatus @default(PENDING)
   decidedById String?
   decidedAt   DateTime?
@@ -248,18 +305,111 @@ model Approval {
 // ── Credential vault (references only — ciphertext lives in the vault service) ──
 
 model VaultEntry {
-  id          String   @id @default(cuid())
+  id          String    @id @default(uuid())
   workspaceId String
   label       String
   domain      String
-  scopes      String[] @default([])
+  scopes      String[]  @default([])
   // Pointer to the sealed secret in the vault service — never the secret itself.
   secretRef   String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   rotatedAt   DateTime?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, domain, label])
   @@map("vault_entries")
+}
+
+// ── Knowledge base ────────────────────────────────────────────────────
+
+model KnowledgeEntry {
+  id          String    @id @default(uuid())
+  workspaceId String
+  title       String
+  body        String    @db.Text
+  tags        String[]  @default([])
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, deletedAt, updatedAt])
+  @@map("knowledge_entries")
+}
+
+// ── File assets ───────────────────────────────────────────────────────
+
+enum AssetKind {
+  AVATAR
+  EXPORT
+  RUN_EVIDENCE
+  DOCUMENT
+}
+
+model Asset {
+  id          String    @id @default(uuid())
+  workspaceId String?
+  kind        AssetKind
+  name        String
+  mimeType    String
+  sizeBytes   Int
+  // Small object storage (≤ 512 KB enforced at write time): avatars and
+  // CSV exports. Larger artifacts move to object storage via storageRef
+  // when the bucket integration is configured.
+  content     Bytes?
+  storageRef  String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, kind, createdAt])
+  @@map("assets")
+}
+
+// ── Audit & security telemetry ────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  workspaceId String?
+  actorId     String?
+  // Namespaced action, e.g. "agent.create" | "member.invite" | "settings.update"
+  action      String
+  targetType  String?
+  targetId    String?
+  metadata    Json     @default("{}")
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+model LoginEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  email     String
+  provider  String // credentials | google | github
+  success   Boolean
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([email, createdAt])
+  @@map("login_events")
 }

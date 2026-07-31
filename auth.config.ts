@@ -3,12 +3,20 @@ import type { NextAuthConfig } from "next-auth";
 /**
  * Edge-safe auth configuration (no Prisma adapter, no Node-only deps).
  * Middleware imports this; the full Node config lives in `auth.ts`.
+ *
+ * Session expiry is enforced per-token (`exp` claim set in auth.ts based on
+ * Remember Me); Auth.js rejects expired tokens during decode, so middleware
+ * automatically bounces expired sessions to /login.
  */
 export const authConfig = {
   pages: {
     signIn: "/login",
   },
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    // Absolute ceiling; Remember Me toggles per-token expiry below this.
+    maxAge: 30 * 24 * 60 * 60,
+  },
   callbacks: {
     authorized({ auth, request }) {
       const { nextUrl } = request;
@@ -30,14 +38,6 @@ export const authConfig = {
       }
 
       return true;
-    },
-    jwt({ token, user }) {
-      if (user?.id) token.sub = user.id;
-      return token;
-    },
-    session({ session, token }) {
-      if (token.sub && session.user) session.user.id = token.sub;
-      return session;
     },
   },
   providers: [], // configured in auth.ts (needs Node runtime)

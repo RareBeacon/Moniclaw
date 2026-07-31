@@ -12,8 +12,13 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "test": "node --import tsx --test tests/permissions.test.ts tests/rate-limit.test.ts tests/validations.test.ts tests/format.test.ts",
+    "smoke": "node scripts/smoke.mjs",
+    "test:auth": "tsx scripts/auth-flow-test.mts",
+    "test:routes": "tsx scripts/dashboard-routes-test.mts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
@@ -37,11 +42,14 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.15",
     "postcss": "^8.4.41",
     "prisma": "^6.19.3",
     "tailwindcss": "^3.4.10",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.23.1",
     "typescript": "^5.5.4"
-  }
+  },
+  "test": "node --import tsx --test tests/permissions.test.ts tests/rate-limit.test.ts tests/validations.test.ts tests/format.test.ts"
 }

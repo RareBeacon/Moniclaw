@@ -2,10 +2,6 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  eslint: {
-    // We run linting in CI separately; do not block production builds.
-    ignoreDuringBuilds: true,
-  },
   async headers() {
     return [
       {

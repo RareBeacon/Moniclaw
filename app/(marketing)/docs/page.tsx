@@ -174,7 +174,7 @@ export default function DocsPage() {
                 {"\n  "}
                 <T.plain>-d </T.plain><T.string>{`'{ "mode": "shadow", "window": "2026-07-20/2026-07-27" }'`}</T.string>
                 {"\n\n"}
-                <T.comment># → {"{"} "run_id": "run_6Hq2", "status": "running" {"}"}</T.comment>
+                <T.comment>{`# → { "run_id": "run_6Hq2", "status": "running" }`}</T.comment>
               </CodeBlock>
             </Reveal>
 

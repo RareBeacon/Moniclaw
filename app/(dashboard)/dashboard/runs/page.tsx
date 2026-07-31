@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { History } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, History } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { getCurrentUser, getPrimaryWorkspace } from "@/lib/workspace";
@@ -60,9 +61,15 @@ export default async function RunsPage() {
             </thead>
             <tbody className="divide-y">
               {runs.map((run) => (
-                <tr key={run.id}>
+                <tr key={run.id} className="transition-colors hover:bg-secondary/30">
                   <th scope="row" className="px-5 py-3.5 font-medium">
-                    {run.agent.name}
+                    <Link
+                      href={`/dashboard/runs/${run.id}`}
+                      className="group inline-flex items-center gap-1 hover:text-primary"
+                    >
+                      {run.agent.name}
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                    </Link>
                     <span className="mt-0.5 block font-mono text-[0.65rem] font-normal text-muted-foreground">
                       {run.id.slice(0, 10)}…
                     </span>
