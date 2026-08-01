@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { KeyRound } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, KeyRound, Plug } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
@@ -49,6 +50,28 @@ export default async function SettingsPage() {
           id {workspace.id} · created {formatDateTime(workspace.createdAt)}
         </p>
       </section>
+
+      <Link
+        href="/dashboard/settings/api-keys"
+        className="group flex items-center justify-between gap-4 rounded-2xl border bg-card p-6 transition-colors hover:border-primary/40 sm:p-7"
+        aria-label="AI provider keys"
+      >
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Plug className="h-4 w-4" aria-hidden />
+          </span>
+          <div>
+            <h2 className="text-sm font-semibold">AI provider keys</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Add API keys from any AI platform — Gemini, OpenAI, Anthropic,
+              Groq, OpenRouter, DeepSeek, Mistral, xAI, Together, Ollama, or a
+              custom OpenAI-compatible endpoint. Verified before saving,
+              encrypted at rest, shared with no one outside this workspace.
+            </p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
+      </Link>
 
       <section className="rounded-2xl border bg-card p-6 sm:p-7" aria-label="Credential vault">
         <h2 className="flex items-center gap-2 text-sm font-semibold">

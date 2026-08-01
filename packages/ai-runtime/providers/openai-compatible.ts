@@ -1,4 +1,4 @@
-import { ProviderError, kindFromStatus, toProviderError } from "../errors";
+import { ProviderError, toProviderError } from "../errors";
 import type {
   ChatMessage,
   ChatRequest,
@@ -9,14 +9,15 @@ import type {
   UsageStats,
 } from "../types";
 import { deadlineSignal, parseSse } from "./sse";
+import { httpError } from "./http";
 import type { ChatProvider, ProviderCredentials } from "./provider";
 
 /**
  * Adapter for OpenAI-compatible chat-completions APIs.
  *
- * Concrete adapters: OpenRouter (shipped). OpenAI, DeepSeek and Mistral share
- * this wire format — the registry enables them the moment credentials exist,
- * so they light up without new code paths.
+ * Concrete adapters: OpenRouter, OpenAI, DeepSeek, Mistral, Groq, xAI,
+ * Together — and `custom`, the user-supplied gateway. One wire format, one
+ * code path; vendors differ only by base URL, key and default model.
  */
 
 interface VendorToolCall {
@@ -172,7 +173,7 @@ export class OpenAiCompatibleProvider implements ChatProvider {
         body: JSON.stringify(this.buildBody(request, false)),
         signal,
       });
-      if (!res.ok) throw await this.httpError(res);
+      if (!res.ok) throw await httpError(res, this.id);
       const json = (await res.json()) as {
         choices?: VendorChoice[];
         usage?: VendorUsage;
@@ -212,7 +213,7 @@ export class OpenAiCompatibleProvider implements ChatProvider {
         body: JSON.stringify(this.buildBody(request, true)),
         signal,
       });
-      if (!res.ok) throw await this.httpError(res);
+      if (!res.ok) throw await httpError(res, this.id);
 
       const pending: VendorToolCall[] = [];
       let finalUsage: VendorUsage | undefined;
@@ -274,7 +275,7 @@ export class OpenAiCompatibleProvider implements ChatProvider {
         headers: this.headers(),
         signal,
       });
-      if (!res.ok) throw await this.httpError(res);
+      if (!res.ok) throw await httpError(res, this.id);
       await res.arrayBuffer();
       return { ok: true, latencyMs: Date.now() - started };
     } catch (err) {
@@ -287,24 +288,6 @@ export class OpenAiCompatibleProvider implements ChatProvider {
     } finally {
       cancel();
     }
-  }
-
-  private async httpError(res: Response): Promise<ProviderError> {
-    let detail = "";
-    try {
-      const body = await res.json();
-      detail =
-        (body as { error?: { message?: string } })?.error?.message ??
-        JSON.stringify(body).slice(0, 300);
-    } catch {
-      detail = res.statusText;
-    }
-    return new ProviderError(
-      kindFromStatus(res.status),
-      this.id,
-      `${res.status} ${detail}`,
-      { status: res.status }
-    );
   }
 }
 

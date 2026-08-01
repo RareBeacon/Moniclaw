@@ -6,13 +6,18 @@ import { AccessDenied } from "@/components/dashboard/access-denied";
 import { AiProvidersPanel } from "@/components/dashboard/ai/providers-panel";
 
 export const metadata: Metadata = {
-  title: "AI Providers",
+  title: "API Keys · Settings",
   robots: { index: false, follow: false },
 };
 
 export const dynamic = "force-dynamic";
 
-export default async function AiProvidersPage() {
+/**
+ * Settings → API Keys — the universal provider vault (Phase 11 v1). Renders
+ * the exact same panel as Dashboard → AI Providers; there is one connection
+ * store, one runtime router, zero duplicated logic.
+ */
+export default async function ApiKeysSettingsPage() {
   const user = await getCurrentUser();
   const primary = user ? await getPrimaryWorkspace(user.id) : null;
   if (!user || !primary) return null;
@@ -23,14 +28,13 @@ export default async function AiProvidersPage() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="text-2xl font-semibold tracking-tight">AI Providers</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">API Keys</h1>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">
-        Bring keys from any AI platform — Gemini, OpenAI, Anthropic, Groq,
-        OpenRouter, DeepSeek, Mistral, xAI, Together, Ollama, or a custom
-        OpenAI-compatible endpoint. The runtime routes through enabled
-        connections in priority order (lowest number first) and fails over
-        automatically; without a workspace key, the platform&apos;s free-tier
-        fallback keeps things running.
+        Connect this workspace to any AI platform. Paste a key (or point at a
+        compatible endpoint), we verify it live before saving, encrypt it
+        (AES-256-GCM), and never display it again. Chat features fail over
+        across your connections in priority order; semantic
+        memory/knowledge embeddings run on Gemini or Ollama (768-dim).
       </p>
       <AiProvidersPanel workspaceId={workspace.id} />
     </div>

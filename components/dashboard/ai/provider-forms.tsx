@@ -30,10 +30,14 @@ type CatalogItem = {
   id: string;
   label: string;
   requiresKey: boolean;
+  requiresBaseUrl: boolean;
+  requiresModel: boolean;
   freeTier: boolean;
   status: "shipped" | "reserved";
+  embeddings: boolean;
   defaultModel: string;
   defaultBaseUrl: string | null;
+  keyUrl: string | null;
 };
 
 export function AddProviderForm({ catalog }: { catalog: CatalogItem[] }) {
@@ -41,6 +45,7 @@ export function AddProviderForm({ catalog }: { catalog: CatalogItem[] }) {
   const [provider, setProvider] = React.useState("GEMINI");
   const [pending, setPending] = React.useState(false);
   const selected = catalog.find((c) => c.id === provider);
+  const needsEndpoint = selected?.requiresBaseUrl === true; // CUSTOM
 
   React.useEffect(() => setPending(false), [state]);
 
@@ -68,6 +73,15 @@ export function AddProviderForm({ catalog }: { catalog: CatalogItem[] }) {
               </option>
             ))}
           </select>
+          {selected && (
+            <p className="text-xs text-muted-foreground">
+              {selected.embeddings ? "chat + embeddings (768-dim)" : "chat completions"}
+              {" · "}
+              {selected.freeTier ? "free tier available" : "paid/billed by the provider"}
+              {selected.requiresBaseUrl ? " · bring your own OpenAI-compatible endpoint" : ""}
+              {selected.keyUrl ? ` · key: ${selected.keyUrl}` : ""}
+            </p>
+          )}
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="label">Connection name</Label>
@@ -75,32 +89,45 @@ export function AddProviderForm({ catalog }: { catalog: CatalogItem[] }) {
         </div>
       </div>
 
-      {selected?.requiresKey && (
+      {(selected?.requiresKey || needsEndpoint) && (
         <div className="grid gap-1.5">
-          <Label htmlFor="apiKey">API key</Label>
-          <Input id="apiKey" name="apiKey" type="password" placeholder="Paste the key — encrypted at rest, shown nowhere after" required />
-          <p className="text-xs text-muted-foreground">
-            Gemini free keys: aistudio.google.com · OpenRouter: openrouter.ai/keys
-          </p>
+          <Label htmlFor="apiKey">API key {needsEndpoint && !selected?.requiresKey ? "(optional for keyless gateways)" : ""}</Label>
+          <Input
+            id="apiKey"
+            name="apiKey"
+            type="password"
+            placeholder="Paste the key — encrypted at rest, shown nowhere after"
+            required={selected?.requiresKey === true}
+          />
+          {selected?.keyUrl && (
+            <p className="text-xs text-muted-foreground">
+              Get a key at {selected.keyUrl}
+            </p>
+          )}
         </div>
       )}
 
       <div className="grid gap-2 sm:grid-cols-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="defaultModel">Default model</Label>
-          <Input id="defaultModel" name="defaultModel" placeholder={selected?.defaultModel ?? "model id"} />
+          <Label htmlFor="defaultModel">Default model {selected?.requiresModel ? "*" : ""}</Label>
+          <Input
+            id="defaultModel"
+            name="defaultModel"
+            placeholder={selected?.defaultModel || "exact model id"}
+            required={selected?.requiresModel === true}
+          />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="priority">Priority (lower = first)</Label>
           <Input id="priority" name="priority" type="number" min={1} max={999} defaultValue={100} />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="baseUrl">Base URL {provider !== "OLLAMA" ? "(optional)" : "*"}</Label>
+          <Label htmlFor="baseUrl">Base URL {needsEndpoint || provider === "OLLAMA" ? "*" : "(optional)"}</Label>
           <Input
             id="baseUrl"
             name="baseUrl"
-            placeholder={selected?.defaultBaseUrl ?? "http://localhost:11434"}
-            required={provider === "OLLAMA"}
+            placeholder={selected?.defaultBaseUrl ?? (needsEndpoint ? "https://your-host/v1" : "http://localhost:11434")}
+            required={needsEndpoint || provider === "OLLAMA"}
           />
         </div>
       </div>

@@ -533,10 +533,14 @@ enum AiProviderId {
   GEMINI
   OPENROUTER
   OLLAMA
-  OPENAI // reserved
-  ANTHROPIC // reserved
-  DEEPSEEK // reserved
-  MISTRAL // reserved
+  OPENAI
+  ANTHROPIC
+  DEEPSEEK
+  MISTRAL
+  GROQ
+  XAI
+  TOGETHER
+  CUSTOM // user-supplied OpenAI-compatible endpoint (baseUrl+model required)
 }
 
 /// BYOK provider credentials per workspace. API keys are stored encrypted

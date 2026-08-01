@@ -6,7 +6,6 @@ import type {
   ResolvedProviderConfig,
 } from "@runtime/model-router/router";
 import {
-  FREE_FIRST_ORDER,
   envFallbackProviders,
   type ProviderId,
 } from "@runtime/providers/registry";
@@ -44,6 +43,7 @@ class PrismaProviderConfigSource implements ProviderConfigSource {
 
     // Platform-level env fallbacks sit BEHIND workspace BYOK configs.
     const workspaceProviders = new Set(resolved.map((r) => r.provider));
+    let envPriority = 900;
     for (const env of envFallbackProviders()) {
       if (!workspaceProviders.has(env.id)) {
         resolved.push({
@@ -52,7 +52,7 @@ class PrismaProviderConfigSource implements ProviderConfigSource {
           apiKey: env.creds.apiKey,
           baseUrl: env.creds.baseUrl,
           defaultModel: undefined,
-          priority: 900 + FREE_FIRST_ORDER.indexOf(env.id),
+          priority: envPriority++, // free-first order, no drift from the registry
           source: "env",
         });
       }

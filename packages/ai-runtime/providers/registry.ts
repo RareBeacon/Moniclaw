@@ -2,6 +2,7 @@ import { ProviderError } from "../errors";
 import { GeminiProvider, GeminiEmbeddings } from "./gemini";
 import { OllamaProvider, OllamaEmbeddings } from "./ollama";
 import { OpenAiCompatibleProvider } from "./openai-compatible";
+import { AnthropicProvider } from "./anthropic";
 import type {
   ChatProvider,
   EmbeddingProvider,
@@ -11,20 +12,47 @@ import type {
 /**
  * Provider registry — the single place that knows how to build adapters.
  *
- * FREE-FIRST default order: Gemini → OpenRouter (free models) → Ollama.
- * OpenAI / Anthropic-shapes / DeepSeek / Mistral share wire formats covered
- * by the OpenAI-compatible base; they are registry-ready and light up when
- * a workspace adds credentials — no business-logic changes required.
+ * Phase 11 (AI gateway, v1): an OPEN mesh. Every catalog entry ships a real
+ * adapter; workspaces can attach any provider — or any OpenAI-compatible
+ * gateway (`custom`) — by adding a key/endpoint under
+ * Dashboard → Settings → API Keys. FREE-FIRST default order for platform
+ * env fallbacks: Gemini → Groq → OpenRouter (free models) → Ollama, then
+ * paid providers if their env keys exist.
  */
 
-export type ProviderId =
-  | "gemini"
-  | "openrouter"
-  | "ollama"
-  | "openai"
-  | "anthropic"
-  | "deepseek"
-  | "mistral";
+export const PROVIDER_IDS = [
+  "gemini",
+  "openrouter",
+  "ollama",
+  "openai",
+  "anthropic",
+  "deepseek",
+  "mistral",
+  "groq",
+  "xai",
+  "together",
+  "custom",
+] as const;
+
+export type ProviderId = (typeof PROVIDER_IDS)[number];
+
+/** Uppercase ids for DB-enum/zod mirroring — kept in literal sync with
+ *  PROVIDER_IDS (the mesh test asserts the mapping so drift fails loudly). */
+export const PROVIDER_IDS_UPPER = [
+  "GEMINI",
+  "OPENROUTER",
+  "OLLAMA",
+  "OPENAI",
+  "ANTHROPIC",
+  "DEEPSEEK",
+  "MISTRAL",
+  "GROQ",
+  "XAI",
+  "TOGETHER",
+  "CUSTOM",
+] as const;
+
+export type ProviderIdUpper = (typeof PROVIDER_IDS_UPPER)[number];
 
 export interface ProviderMeta {
   id: ProviderId;
@@ -36,6 +64,13 @@ export interface ProviderMeta {
   freeTier: boolean;
   /** Shipping adapter today vs. registry-ready future provider. */
   status: "shipped" | "reserved";
+  /** Exposes embeddings through this runtime (768-dim schema contract). */
+  embeddings: boolean;
+  /** `custom` endpoints must supply their own baseUrl and model id. */
+  requiresBaseUrl?: boolean;
+  requiresModel?: boolean;
+  /** Human hint: where to obtain a key. */
+  keyUrl?: string;
 }
 
 export const PROVIDER_CATALOG: readonly ProviderMeta[] = [
@@ -46,6 +81,8 @@ export const PROVIDER_CATALOG: readonly ProviderMeta[] = [
     defaultModel: "gemini-2.5-flash",
     freeTier: true,
     status: "shipped",
+    embeddings: true,
+    keyUrl: "aistudio.google.com",
   },
   {
     id: "openrouter",
@@ -58,6 +95,8 @@ export const PROVIDER_CATALOG: readonly ProviderMeta[] = [
     defaultModel: "google/gemma-4-26b-a4b-it:free",
     freeTier: true,
     status: "shipped",
+    embeddings: false,
+    keyUrl: "openrouter.ai/keys",
   },
   {
     id: "ollama",
@@ -67,6 +106,7 @@ export const PROVIDER_CATALOG: readonly ProviderMeta[] = [
     defaultModel: "llama3.1",
     freeTier: true,
     status: "shipped",
+    embeddings: true,
   },
   {
     id: "openai",
@@ -75,16 +115,20 @@ export const PROVIDER_CATALOG: readonly ProviderMeta[] = [
     defaultBaseUrl: "https://api.openai.com/v1",
     defaultModel: "gpt-4o-mini",
     freeTier: false,
-    status: "reserved",
+    status: "shipped",
+    embeddings: false, // 1536-dim default ≠ the schema's 768 contract
+    keyUrl: "platform.openai.com/api-keys",
   },
   {
     id: "anthropic",
     label: "Anthropic",
     requiresKey: true,
-    defaultBaseUrl: "https://api.anthropic.com/v1",
+    defaultBaseUrl: "https://api.anthropic.com",
     defaultModel: "claude-haiku-4-5",
     freeTier: false,
-    status: "reserved",
+    status: "shipped",
+    embeddings: false,
+    keyUrl: "console.anthropic.com/settings/keys",
   },
   {
     id: "deepseek",
@@ -93,7 +137,9 @@ export const PROVIDER_CATALOG: readonly ProviderMeta[] = [
     defaultBaseUrl: "https://api.deepseek.com/v1",
     defaultModel: "deepseek-chat",
     freeTier: false,
-    status: "reserved",
+    status: "shipped",
+    embeddings: false,
+    keyUrl: "platform.deepseek.com/api_keys",
   },
   {
     id: "mistral",
@@ -101,15 +147,69 @@ export const PROVIDER_CATALOG: readonly ProviderMeta[] = [
     requiresKey: true,
     defaultBaseUrl: "https://api.mistral.ai/v1",
     defaultModel: "mistral-small-latest",
+    freeTier: true, // La Plateforme free tier (rate-limited)
+    status: "shipped",
+    embeddings: false,
+    keyUrl: "console.mistral.ai/api-keys",
+  },
+  {
+    id: "groq",
+    label: "Groq (free tier)",
+    requiresKey: true,
+    defaultBaseUrl: "https://api.groq.com/openai/v1",
+    defaultModel: "llama-3.3-70b-versatile",
+    freeTier: true,
+    status: "shipped",
+    embeddings: false,
+    keyUrl: "console.groq.com/keys",
+  },
+  {
+    id: "xai",
+    label: "xAI (Grok)",
+    requiresKey: true,
+    defaultBaseUrl: "https://api.x.ai/v1",
+    defaultModel: "grok-3-mini",
     freeTier: false,
-    status: "reserved",
+    status: "shipped",
+    embeddings: false,
+    keyUrl: "console.x.ai",
+  },
+  {
+    id: "together",
+    label: "Together AI",
+    requiresKey: true,
+    defaultBaseUrl: "https://api.together.xyz/v1",
+    defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    freeTier: false,
+    status: "shipped",
+    embeddings: false,
+    keyUrl: "api.together.ai/settings/api-keys",
+  },
+  {
+    id: "custom",
+    label: "Custom endpoint (OpenAI-compatible)",
+    requiresKey: false, // key optional — internal gateways may be keyless
+    defaultModel: "",
+    freeTier: false,
+    status: "shipped",
+    embeddings: false,
+    requiresBaseUrl: true,
+    requiresModel: true,
   },
 ] as const;
 
+/** Platform env fallbacks, FREE-FIRST, then paid env keys behind them. */
 export const FREE_FIRST_ORDER: readonly ProviderId[] = [
   "gemini",
+  "groq",
   "openrouter",
   "ollama",
+  "openai",
+  "anthropic",
+  "deepseek",
+  "mistral",
+  "xai",
+  "together",
 ];
 
 export function providerMeta(id: ProviderId): ProviderMeta {
@@ -117,6 +217,24 @@ export function providerMeta(id: ProviderId): ProviderMeta {
   if (!meta) throw new Error(`Unknown provider: ${id}`);
   return meta;
 }
+
+/** Meta lookup for the uppercase DB-enum representation. */
+export function providerMetaUpper(idUpper: string): ProviderMeta {
+  return providerMeta(idUpper.toLowerCase() as ProviderId);
+}
+
+/** Env var powering each provider's platform-level fallback, if any. */
+const ENV_KEY_VARS: Partial<Record<ProviderId, string>> = {
+  gemini: "GEMINI_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+  groq: "GROQ_API_KEY",
+  openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+  deepseek: "DEEPSEEK_API_KEY",
+  mistral: "MISTRAL_API_KEY",
+  xai: "XAI_API_KEY",
+  together: "TOGETHER_API_KEY",
+};
 
 /** Build a chat adapter for a provider id from user-supplied credentials. */
 export function createChatProvider(
@@ -150,10 +268,36 @@ export function createChatProvider(
         }
       );
     }
-    // Registry-ready: same wire format as OpenAI; activation is config-only.
+    case "anthropic": {
+      if (!creds.apiKey)
+        throw new ProviderError("auth", id, "Anthropic requires an API key (console.anthropic.com)");
+      return new AnthropicProvider(
+        creds.apiKey,
+        defaults?.model ?? providerMeta(id).defaultModel,
+        creds.baseUrl ?? providerMeta(id).defaultBaseUrl!
+      );
+    }
+    case "custom": {
+      const meta = providerMeta(id);
+      if (!creds.baseUrl)
+        throw new ProviderError("model", id, "Custom endpoints need a Base URL (OpenAI-compatible, e.g. https://host/v1)");
+      if (!defaults?.model)
+        throw new ProviderError("model", id, "Custom endpoints need a Default model id — the runtime cannot guess one");
+      return new OpenAiCompatibleProvider(
+        id,
+        meta.label,
+        creds.baseUrl.replace(/\/+$/, ""),
+        creds.apiKey ?? "",
+        defaults.model
+      );
+    }
+    // OpenAI-shaped wire format shared by these vendors.
     case "openai":
     case "deepseek":
-    case "mistral": {
+    case "mistral":
+    case "groq":
+    case "xai":
+    case "together": {
       if (!creds.apiKey)
         throw new ProviderError("auth", id, `${providerMeta(id).label} requires an API key`);
       const meta = providerMeta(id);
@@ -165,12 +309,6 @@ export function createChatProvider(
         defaults?.model ?? meta.defaultModel
       );
     }
-    case "anthropic":
-      throw new ProviderError(
-        "model",
-        id,
-        "Anthropic's adapter ships with the Phase 4 runtime hardening; configure Gemini/OpenRouter/Ollama meanwhile."
-      );
     default: {
       const exhaustive: never = id;
       throw new Error(`Unhandled provider: ${exhaustive as string}`);
@@ -178,7 +316,7 @@ export function createChatProvider(
   }
 }
 
-/** Build an embedding adapter. Gemini is the canonical 768-dim backbone. */
+/** Build an embedding adapter. Gemini/Ollama keep the 768-dim contract. */
 export function createEmbeddingProvider(
   id: ProviderId,
   creds: ProviderCredentials,
@@ -199,7 +337,7 @@ export function createEmbeddingProvider(
       throw new ProviderError(
         "model",
         id,
-        `${providerMeta(id).label} does not expose embeddings through this runtime yet — use Gemini or Ollama embeddings.`
+        `${providerMeta(id).label} does not expose 768-dim embeddings through this runtime — use Gemini or Ollama embeddings.`
       );
   }
 }
@@ -210,14 +348,14 @@ export function envFallbackProviders(): Array<{
   creds: ProviderCredentials;
 }> {
   const out: Array<{ id: ProviderId; creds: ProviderCredentials }> = [];
-  if (process.env.GEMINI_API_KEY) {
-    out.push({ id: "gemini", creds: { apiKey: process.env.GEMINI_API_KEY } });
-  }
-  if (process.env.OPENROUTER_API_KEY) {
-    out.push({ id: "openrouter", creds: { apiKey: process.env.OPENROUTER_API_KEY } });
-  }
-  if (process.env.OLLAMA_BASE_URL) {
-    out.push({ id: "ollama", creds: { baseUrl: process.env.OLLAMA_BASE_URL } });
+  for (const id of FREE_FIRST_ORDER) {
+    if (id === "ollama") {
+      if (process.env.OLLAMA_BASE_URL) out.push({ id, creds: { baseUrl: process.env.OLLAMA_BASE_URL } });
+      continue;
+    }
+    const envVar = ENV_KEY_VARS[id];
+    const key = envVar ? process.env[envVar] : undefined;
+    if (key) out.push({ id, creds: { apiKey: key } });
   }
   return out;
 }

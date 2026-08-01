@@ -1,9 +1,25 @@
 import { z } from "zod";
+import { PROVIDER_IDS_UPPER, providerMetaUpper } from "@runtime/providers/registry";
 
 /** Validation for the AI dashboard surfaces (server actions). */
 
+/** Uppercase provider ids — derived from the registry catalog (single source). */
+const providerIdEnum = z.enum(PROVIDER_IDS_UPPER);
+
+/** Custom endpoints are complete only with a base URL and a model id. */
+function customEndpointNeedsBoth(data: { provider?: string; baseUrl?: string; defaultModel?: string }, ctx: z.RefinementCtx) {
+  if (!data.provider) return; // partial updates: provider unchanged
+  if (!providerMetaUpper(data.provider).requiresBaseUrl) return;
+  if (!data.baseUrl) {
+    ctx.addIssue({ code: "custom", path: ["baseUrl"], message: "Custom endpoints need a Base URL (OpenAI-compatible, e.g. https://host/v1)." });
+  }
+  if (!data.defaultModel) {
+    ctx.addIssue({ code: "custom", path: ["defaultModel"], message: "Custom endpoints need a Default model id." });
+  }
+}
+
 export const providerConfigSchema = z.object({
-  provider: z.enum(["GEMINI", "OPENROUTER", "OLLAMA", "OPENAI", "ANTHROPIC", "DEEPSEEK", "MISTRAL"]),
+  provider: providerIdEnum,
   label: z.string().trim().min(2).max(60),
   apiKey: z.string().trim().max(500).optional(), // absent = keep existing
   baseUrl: z
@@ -16,15 +32,14 @@ export const providerConfigSchema = z.object({
   defaultModel: z.string().trim().max(120).optional(),
   priority: z.coerce.number().int().min(1).max(999).default(100),
   enabled: z.coerce.boolean().default(true),
-});
+}).superRefine(customEndpointNeedsBoth);
 
 export const providerConfigUpdateSchema = providerConfigSchema.partial().extend({
   id: z.string().uuid(),
-});
+}).superRefine(customEndpointNeedsBoth);
 
 export const aiSettingsSchema = z.object({
-  defaultProvider: z
-    .enum(["GEMINI", "OPENROUTER", "OLLAMA", "OPENAI", "ANTHROPIC", "DEEPSEEK", "MISTRAL"])
+  defaultProvider: providerIdEnum
     .optional()
     .nullable(),
   defaultModel: z.string().trim().min(2).max(120),

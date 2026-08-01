@@ -195,6 +195,7 @@ async function main() {
       ["/dashboard/billing", "Billing"],
       ["/dashboard/api-keys", "API keys"],
       ["/dashboard/settings", "Settings"],
+      ["/dashboard/settings/api-keys", "API Keys"],
       ["/dashboard/profile", "Profile"],
       ["/dashboard/playground", "AI Playground"],
       ["/dashboard/memory", "Memory Explorer"],

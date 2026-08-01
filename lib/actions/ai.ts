@@ -21,7 +21,7 @@ import {
 } from "@/lib/validations/ai";
 import { generateApiKey } from "@/lib/api-auth";
 import { getRuntime } from "@/lib/ai/runtime";
-import { createChatProvider, type ProviderId } from "@runtime/providers/registry";
+import { createChatProvider, providerMetaUpper, type ProviderId } from "@runtime/providers/registry";
 import { decryptSecret } from "@/lib/crypto";
 import { renderPrompt, promptVariablesSchema } from "@runtime/prompts/renderer";
 import { workflowDefinitionSchema } from "@runtime/workflows/executor";
@@ -69,8 +69,7 @@ export async function createProviderConfig(
   }
   const data = parsed.data;
 
-  const requiresKey = !["OLLAMA"].includes(data.provider);
-  if (requiresKey && !data.apiKey) {
+  if (providerMetaUpper(data.provider).requiresKey && !data.apiKey) {
     return { error: `${data.provider} connections need an API key.` };
   }
 
