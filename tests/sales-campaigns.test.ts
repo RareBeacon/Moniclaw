@@ -138,6 +138,7 @@ function makeHarness(opts: {
       },
     } as never,
     searches: stub("searches"),
+    settings: stub("settings"),
   };
   const engine = new CampaignEngine({
     repos,
@@ -158,6 +159,20 @@ function makeHarness(opts: {
   Object.defineProperty(h, "touches", { get: () => touches });
   return h;
 }
+
+test("regression: first step at order 0 is not skipped (currentStep -1 sentinel)", async () => {
+  const h = makeHarness({
+    steps: [step({ order: 0, kind: "DRAFT_EMAIL" })],
+    enr: enrollment({ currentStep: -1 }) as SalesEnrollmentRow & { campaign?: SalesCampaignRow },
+  });
+  const result = await h.engine.tick();
+  assert.equal(result.drafted, 1, "step order 0 must execute on the first tick");
+  assert.equal((h.drafts[0] as unknown as { status: string }).status, "PENDING_REVIEW");
+  assert.ok(
+    h.enrollmentPatches.some((p) => p.patch?.currentStep === 0),
+    "enrollment advances to the executed step order"
+  );
+});
 
 test("tick produces a reviewed draft + approval, advances the enrollment", async () => {
   const h = makeHarness({});

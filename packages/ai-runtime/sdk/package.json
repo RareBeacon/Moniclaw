@@ -1,7 +1,7 @@
 {
   "name": "@moniclaw/sdk",
-  "version": "0.3.0",
-  "description": "TypeScript SDK for the MoniClaw AI Runtime REST API",
+  "version": "0.4.0",
+  "description": "TypeScript SDK for the MoniClaw platform REST API (AI Runtime + AI Sales Employee)",
   "license": "UNLICENSED",
   "private": false,
   "type": "module",
@@ -13,6 +13,16 @@
   "engines": {
     "node": ">=18"
   },
-  "keywords": ["moniclaw", "ai", "runtime", "sdk", "agents"],
-  "files": ["client.ts", "README.md"]
+  "keywords": [
+    "moniclaw",
+    "ai",
+    "runtime",
+    "sdk",
+    "agents"
+  ],
+  "files": [
+    "client.ts",
+    "sales.ts",
+    "README.md"
+  ]
 }

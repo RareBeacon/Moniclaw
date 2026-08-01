@@ -56,6 +56,12 @@ export type Action =
   | "browser.downloads.manage"
   | "browser.settings.manage"
   | "browser.policy.manage"
+  | "sales.read"
+  | "sales.write"
+  | "sales.research.run"
+  | "sales.campaigns.manage"
+  | "sales.drafts.review"
+  | "sales.settings.manage"
   | "workspace.delete";
 
 const MIN_RANK: Record<Exclude<Action, "workspace.delete">, MembershipRole> = {
@@ -97,6 +103,13 @@ const MIN_RANK: Record<Exclude<Action, "workspace.delete">, MembershipRole> = {
   "browser.downloads.manage": "MANAGER",
   "browser.settings.manage": "ADMIN",
   "browser.policy.manage": "ADMIN",
+  // AI Sales Employee (Phase 6)
+  "sales.read": "VIEWER",
+  "sales.write": "MEMBER",
+  "sales.research.run": "MEMBER",
+  "sales.campaigns.manage": "MEMBER",
+  "sales.drafts.review": "MANAGER",
+  "sales.settings.manage": "ADMIN",
 };
 
 /** Actions that no rank escalation may grant — owner identity only. */

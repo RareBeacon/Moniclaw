@@ -7,8 +7,9 @@ import { SalesError } from "../errors";
 import {
   computeFitScore, computeIcpFit, computePriority, normalizeDomain,
 } from "../scoring";
-import type {
-  ActivityInput, CompanyInput, ContactInput, DealInput, IcpProfile,
+import {
+  icpProfileSchema,
+  type ActivityInput, type CompanyInput, type ContactInput, type DealInput, type IcpProfile,
 } from "../types";
 import type {
   SalesActivityRow, SalesAuditSink, SalesCompanyRow, SalesContactRow, SalesDealRow, SalesRepositories,
@@ -36,7 +37,7 @@ export class SalesCrmService {
       ...input, domain,
       ...(input.custom ? { custom: input.custom as object } : {}),
     });
-    await this.rescoreCompany(workspaceId, row.id, null);
+    await this.rescore(workspaceId, row.id);
     await this.deps.audit.log({
       workspaceId, actorId, action: "sales.company.create", target: row.id,
       metadata: { name: row.name, domain },
@@ -56,16 +57,38 @@ export class SalesCrmService {
       (patch as Record<string, unknown>).domain = nextDomain;
     }
     await this.deps.repos.companies.update(workspaceId, id, patch as Record<string, unknown>);
-    await this.rescoreCompany(workspaceId, id, null);
+    await this.rescore(workspaceId, id);
     await this.deps.audit.log({ workspaceId, actorId, action: "sales.company.update", target: id, metadata: { fields: Object.keys(patch) } });
     return (await this.deps.repos.companies.get(workspaceId, id))!;
   }
 
   /**
-   * Recompute fit + (+icp when supplied) + priority, persisting the reasons.
-   * Also recomputes when contacts/deals change via logActivity / deal ops.
+   * Public, explicit recompute with a supplied ICP (research reconciliation,
+   * settings-page "rescore all"). Internal side-effect paths go through
+   * `rescore`, which loads the workspace ICP from settings automatically.
    */
   async rescoreCompany(workspaceId: string, companyId: string, icp: IcpProfile | null): Promise<void> {
+    await this.rescore(workspaceId, companyId, icp);
+  }
+
+  /** Workspace ICP from settings; null until configured. */
+  private async icp(workspaceId: string): Promise<IcpProfile | null> {
+    const settings = await this.deps.repos.settings.get(workspaceId);
+    const parsed = icpProfileSchema.safeParse(settings?.icpProfile ?? {});
+    if (!parsed.success) return null;
+    const icp = parsed.data;
+    const configured =
+      icp.industries.length + icp.sizes.length + icp.geographies.length +
+      icp.keywords.length + icp.roles.length > 0;
+    return configured ? icp : null;
+  }
+
+  /**
+   * Recompute fit + ICP overlay + priority, persisting the reasons.
+   * Also recomputes when contacts/deals change via logActivity / deal ops.
+   */
+  private async rescore(workspaceId: string, companyId: string, icp?: IcpProfile | null): Promise<void> {
+    const effectiveIcp = icp === undefined ? await this.icp(workspaceId) : icp;
     const company = await this.requireCompany(workspaceId, companyId);
     const counts = await this.deps.repos.companies.countsByCompany(workspaceId, companyId);
     const strongest = await this.strongestContactStatus(workspaceId, companyId);
@@ -78,13 +101,13 @@ export class SalesCrmService {
       researchCompleted: company.researchStatus === "COMPLETED",
       contactCount: counts.contacts, openDealCount: counts.openDeals,
     });
-    const icpResult = icp
+    const icpResult = effectiveIcp
       ? computeIcpFit(
           {
             industry: company.industry, size: company.size, geography: company.geography,
             textCorpus: [company.summary, company.productsServices, company.targetMarket].filter(Boolean).join("\n"),
           },
-          icp
+          effectiveIcp
         )
       : null;
     const priority = computePriority({
@@ -117,7 +140,7 @@ export class SalesCrmService {
     }
     if (input.companyId) await this.requireCompany(workspaceId, input.companyId);
     const row = await this.deps.repos.contacts.create(workspaceId, { ...input, email });
-    if (row.companyId) await this.rescoreCompany(workspaceId, row.companyId, null);
+    if (row.companyId) await this.rescore(workspaceId, row.companyId);
     await this.deps.audit.log({
       workspaceId, actorId, action: "sales.contact.create", target: row.id,
       metadata: { name: row.name, companyId: row.companyId },
@@ -147,7 +170,7 @@ export class SalesCrmService {
       throw new SalesError("conflict", `Contact in status ${contact.status} cannot be qualified from here.`);
     }
     await this.deps.repos.contacts.setStatus(id, "QUALIFIED");
-    if (contact.companyId) await this.rescoreCompany(workspaceId, contact.companyId, null);
+    if (contact.companyId) await this.rescore(workspaceId, contact.companyId);
     await this.deps.audit.log({ workspaceId, actorId, action: "sales.contact.qualify", target: id });
     return (await this.deps.repos.contacts.get(workspaceId, id))!;
   }
@@ -155,7 +178,7 @@ export class SalesCrmService {
   async deleteContact(workspaceId: string, actorId: string | null, id: string): Promise<void> {
     const contact = await this.requireContact(workspaceId, id);
     await this.deps.repos.contacts.softDelete(workspaceId, id);
-    if (contact.companyId) await this.rescoreCompany(workspaceId, contact.companyId, null);
+    if (contact.companyId) await this.rescore(workspaceId, contact.companyId);
     await this.deps.audit.log({ workspaceId, actorId, action: "sales.contact.delete", target: id });
   }
 
@@ -182,7 +205,7 @@ export class SalesCrmService {
       ...input, pipelineId: pipeline.id, stageId: stage.id,
       ...(input.expectedCloseAt ? { expectedCloseAt: new Date(input.expectedCloseAt) } : {}),
     });
-    await this.rescoreCompany(workspaceId, input.companyId, null);
+    await this.rescore(workspaceId, input.companyId);
     await this.deps.audit.log({
       workspaceId, actorId, action: "sales.deal.create", target: row.id,
       metadata: { title: row.title, companyId: input.companyId, stage: stage.name },
@@ -209,7 +232,7 @@ export class SalesCrmService {
     if (deal.status !== "OPEN") throw new SalesError("conflict", `Deal is already ${deal.status}.`);
     if (status === "LOST" && !lostReason?.trim()) throw new SalesError("validation", "Lost deals need a reason.");
     await this.deps.repos.deals.close(dealId, status, lostReason?.trim());
-    await this.rescoreCompany(workspaceId, deal.companyId, null);
+    await this.rescore(workspaceId, deal.companyId);
     await this.deps.audit.log({
       workspaceId, actorId, action: `sales.deal.${status.toLowerCase()}`, target: dealId,
       metadata: { lostReason: lostReason ?? null },
@@ -220,7 +243,7 @@ export class SalesCrmService {
   async deleteDeal(workspaceId: string, actorId: string | null, id: string): Promise<void> {
     const deal = await this.requireDeal(workspaceId, id);
     await this.deps.repos.deals.softDelete(workspaceId, id);
-    await this.rescoreCompany(workspaceId, deal.companyId, null);
+    await this.rescore(workspaceId, deal.companyId);
     await this.deps.audit.log({ workspaceId, actorId, action: "sales.deal.delete", target: id });
   }
 
@@ -236,7 +259,7 @@ export class SalesCrmService {
       createdById: actorId,
     });
     if (input.contactId) await this.deps.repos.contacts.touch(input.contactId, new Date());
-    if (input.companyId) await this.rescoreCompany(workspaceId, input.companyId, null);
+    if (input.companyId) await this.rescore(workspaceId, input.companyId);
     return row;
   }
 

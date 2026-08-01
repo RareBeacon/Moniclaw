@@ -196,6 +196,7 @@ model Workspace {
   salesCampaigns    SalesCampaign[]
   salesDrafts       SalesDraft[]
   salesSavedSearches SalesSavedSearch[]
+  salesSettings     SalesWorkspaceSettings?
 
   @@index([deletedAt])
   @@map("workspaces")
@@ -1597,4 +1598,22 @@ model SalesSavedSearch {
 
   @@unique([workspaceId, name], name: "salesSavedSearchName")
   @@map("sales_saved_searches")
+}
+
+// One row per workspace — ICP definition, default campaign send window and
+// sender identity used by personalization. Additive; no back-relations into
+// earlier phases.
+model SalesWorkspaceSettings {
+  id                String   @id @default(uuid())
+  workspaceId       String   @unique
+  icpProfile        Json     @default("{}") // icpProfileSchema shape (types.ts)
+  defaultSendWindow Json     @default("{}") // { daysOfWeek?, startHour?, endHour? } UTC
+  senderName        String?
+  senderTitle       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("sales_workspace_settings")
 }

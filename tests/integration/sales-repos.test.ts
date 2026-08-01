@@ -302,3 +302,40 @@ itDb("every repository read is workspace-scoped", async () => {
   const wonRoll = await repos.deals.analytics(otherWorkspaceId);
   assert.equal(wonRoll.wonCount30d, 0);
 });
+
+// ── Workspace settings ────────────────────────────────────────────────────
+
+itDb("settings upsert is race-safe and preserves unpatched fields", async () => {
+  const first = await repos.settings.upsert(workspaceId, {
+    icpProfile: { industries: ["logistics"], sizes: [], geographies: [], keywords: ["freight"], roles: [] },
+    senderName: "Tunde AE",
+  });
+  assert.equal(first.workspaceId, workspaceId);
+
+  // Field-targeted patch must NOT clobber sibling fields.
+  const second = await repos.settings.upsert(workspaceId, { senderTitle: "Account Executive" });
+  const icp = second.icpProfile as { industries: string[]; keywords: string[] };
+  assert.deepEqual(icp.industries, ["logistics"], "icpProfile survived a sender-only patch");
+  assert.equal(second.senderName, "Tunde AE");
+  assert.equal(second.senderTitle, "Account Executive");
+
+  const got = await repos.settings.get(workspaceId);
+  assert.equal(got?.id, first.id, "upsert never creates a second row");
+
+  // ICP schema round-trips through the package validator.
+  const parsed = icpProfileSchema.parse(got!.icpProfile);
+  assert.deepEqual(parsed.keywords, ["freight"]);
+
+  // Concurrent upserts race on the workspace unique key without erroring.
+  await Promise.all([
+    repos.settings.upsert(workspaceId, { senderName: "A" }),
+    repos.settings.upsert(workspaceId, { senderName: "B" }),
+  ]);
+  const after = await repos.settings.get(workspaceId);
+  assert.ok(["A", "B"].includes(after!.senderName ?? ""), "one writer won, no duplicate rows");
+});
+
+itDb("settings are workspace-isolated", async () => {
+  const other = await repos.settings.get(otherWorkspaceId);
+  assert.equal(other, null, "no settings row leaks across tenants");
+});

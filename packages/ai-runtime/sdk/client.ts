@@ -10,6 +10,8 @@
  *   const { data } = await client.chat.complete({ message: "Summarize Q2 risk." });
  */
 
+import { SalesClient } from "./sales";
+
 export interface MoniClawClientOptions {
   /** Base URL of the deployment (no trailing slash). */
   baseUrl?: string;
@@ -51,6 +53,7 @@ export class MoniClawClient {
   readonly providers: ProvidersClient;
   readonly workflows: WorkflowsClient;
   readonly usage: UsageClient;
+  readonly sales: SalesClient;
 
   readonly baseUrl: string;
   readonly apiKey: string;
@@ -69,6 +72,7 @@ export class MoniClawClient {
     this.providers = new ProvidersClient(this);
     this.workflows = new WorkflowsClient(this);
     this.usage = new UsageClient(this);
+    this.sales = new SalesClient(this);
   }
 
   /** Internal transport — exported for advanced/raw calls. */

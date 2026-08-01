@@ -8,11 +8,13 @@
 import type { PrismaClient } from "@prisma/client";
 
 import type {
-  SalesActivityRepository, SalesActivityRow, SalesCampaignRepository,
+  SalesActivityRepository,
+  SalesActivityRow, SalesCampaignRepository,
   SalesCampaignRow, SalesCampaignStepRow, SalesCompanyRepository, SalesCompanyRow,
   SalesContactRepository, SalesContactRow, SalesDealRepository, SalesDealRow,
   SalesDraftRepository, SalesDraftRow, SalesEnrollmentRow, SalesPipelineRepository,
   SalesPipelineRow, SalesRepositories, SalesSavedSearchRepository,
+  SalesSettingsRepository, SalesSettingsRow,
 } from "../ports";
 import type { SalesSearchFilters } from "../types";
 
@@ -438,7 +440,9 @@ export class SalesCampaignPrismaRepository implements SalesCampaignRepository {
     if (existing) return { enrollment: asRow(existing), created: false };
     try {
       const r = await this.db.salesCampaignEnrollment.create({
-        data: { campaignId, contactId, companyId, nextRunAt },
+        // -1 = "no step executed yet" — tick picks the first step whose
+        // order > currentStep, so enrollment must begin BELOW every order.
+        data: { campaignId, contactId, companyId, nextRunAt, currentStep: -1 },
       });
       return { enrollment: asRow(r), created: true };
     } catch {
@@ -589,6 +593,38 @@ export class SalesSavedSearchPrismaRepository implements SalesSavedSearchReposit
   }
 }
 
+// ── Workspace settings ─────────────────────────────────────────────────────
+
+export class SalesSettingsPrismaRepository implements SalesSettingsRepository {
+  constructor(private readonly db: PrismaClient) {}
+
+  async get(workspaceId: string): Promise<SalesSettingsRow | null> {
+    return this.db.salesWorkspaceSettings.findUnique({ where: { workspaceId } });
+  }
+
+  async upsert(workspaceId: string, patch: {
+    icpProfile?: unknown; defaultSendWindow?: unknown;
+    senderName?: string | null; senderTitle?: string | null;
+  }): Promise<SalesSettingsRow> {
+    return this.db.salesWorkspaceSettings.upsert({
+      where: { workspaceId },
+      create: {
+        workspaceId,
+        icpProfile: (patch.icpProfile ?? {}) as object,
+        defaultSendWindow: (patch.defaultSendWindow ?? {}) as object,
+        senderName: patch.senderName ?? null,
+        senderTitle: patch.senderTitle ?? null,
+      },
+      update: {
+        ...(patch.icpProfile !== undefined ? { icpProfile: patch.icpProfile as object } : {}),
+        ...(patch.defaultSendWindow !== undefined ? { defaultSendWindow: patch.defaultSendWindow as object } : {}),
+        ...(patch.senderName !== undefined ? { senderName: patch.senderName } : {}),
+        ...(patch.senderTitle !== undefined ? { senderTitle: patch.senderTitle } : {}),
+      },
+    });
+  }
+}
+
 // ── Factory ────────────────────────────────────────────────────────────────
 
 export function buildSalesRepositories(db: PrismaClient): SalesRepositories {
@@ -601,5 +637,6 @@ export function buildSalesRepositories(db: PrismaClient): SalesRepositories {
     campaigns: new SalesCampaignPrismaRepository(db),
     drafts: new SalesDraftPrismaRepository(db),
     searches: new SalesSavedSearchPrismaRepository(db),
+    settings: new SalesSettingsPrismaRepository(db),
   };
 }

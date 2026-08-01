@@ -1,5 +1,6 @@
 import { audit } from "@/lib/audit";
 import { getAgentRuntime } from "@/lib/agents/runtime";
+import { getSalesRuntime } from "@/lib/sales/runtime";
 import { errorResponse, fail, ok } from "@/lib/agents/api";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,23 @@ export async function POST(request: Request) {
         metadata: result,
       });
     }
-    return ok(result);
+
+    // Phase 6: sales campaign engine advances due enrollments on the same
+    // cadence (draft production for human review — never auto-sends).
+    // A campaign failure must never break the worker tick (and vice versa).
+    let campaigns: unknown = { skipped: true };
+    try {
+      const salesResult = await getSalesRuntime().campaignsEngine.tick();
+      campaigns = salesResult;
+      if (salesResult.processed > 0 || salesResult.drafted > 0) {
+        await audit({ action: "sales.campaign.tick", metadata: salesResult as unknown as Record<string, unknown> });
+      }
+    } catch (err) {
+      console.error("[tick] sales campaign engine failed:", err);
+      campaigns = { error: err instanceof Error ? err.message : "failed" };
+    }
+
+    return ok({ ...result, campaigns });
   } catch (err) {
     return errorResponse(err);
   }

@@ -78,4 +78,6 @@ export const RATE_LIMITS = {
   browserExecute: { limit: 150, windowMs: 60 * 60_000 }, // per workspace (executions+actions)
   agentsRun: { limit: 60, windowMs: 60 * 60_000 }, // per workspace (worker dispatches)
   browserUpload: { limit: 30, windowMs: 60 * 60_000 }, // per workspace (file uploads)
+  salesResearch: { limit: 20, windowMs: 60 * 60_000 }, // per workspace (research dispatches)
+  salesDraftCreate: { limit: 120, windowMs: 60 * 60_000 }, // per workspace (manual drafts)
 } as const;

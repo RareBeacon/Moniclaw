@@ -64,6 +64,7 @@ export interface SalesCampaignStepRow {
 
 export interface SalesEnrollmentRow {
   id: string; campaignId: string; contactId: string; companyId: string | null;
+  /** Last EXECUTED step order; -1 = not started (first step may be order 0). */
   status: string; currentStep: number; nextRunAt: Date | null;
   exitReason: string | null; createdAt: Date | string;
 }
@@ -163,7 +164,7 @@ export interface SalesDraftRepository {
   get(workspaceId: string, id: string): Promise<SalesDraftRow | null>;
   list(workspaceId: string, opts: { status?: string | string[]; contactId?: string; companyId?: string; take?: number }): Promise<SalesDraftRow[]>;
   setStatus(id: string, status: string, patch?: {
-    subject?: string; body?: string; scheduledAt?: Date | null; sentAt?: Date | null;
+    subject?: string | null; body?: string; scheduledAt?: Date | null; sentAt?: Date | null;
     rejectionNote?: string | null; approvalId?: string | null; agentRunId?: string | null;
     deliveryStatus?: string; providerMessageId?: string | null; threadId?: string | null;
   }): Promise<void>;
@@ -177,6 +178,22 @@ export interface SalesSavedSearchRepository {
   delete(workspaceId: string, id: string): Promise<void>;
 }
 
+export interface SalesSettingsRow {
+  id: string; workspaceId: string;
+  icpProfile: unknown; defaultSendWindow: unknown;
+  senderName: string | null; senderTitle: string | null;
+  updatedAt: Date | string;
+}
+
+export interface SalesSettingsRepository {
+  get(workspaceId: string): Promise<SalesSettingsRow | null>;
+  /** Race-safe upsert keyed on the unique workspaceId. */
+  upsert(workspaceId: string, patch: {
+    icpProfile?: unknown; defaultSendWindow?: unknown;
+    senderName?: string | null; senderTitle?: string | null;
+  }): Promise<SalesSettingsRow>;
+}
+
 export interface SalesRepositories {
   companies: SalesCompanyRepository;
   contacts: SalesContactRepository;
@@ -186,6 +203,7 @@ export interface SalesRepositories {
   campaigns: SalesCampaignRepository;
   drafts: SalesDraftRepository;
   searches: SalesSavedSearchRepository;
+  settings: SalesSettingsRepository;
 }
 
 // ── Platform bridges ──────────────────────────────────────────────────────

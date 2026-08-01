@@ -14,6 +14,7 @@ export {
 export * from "./ports";
 export { SalesCrmService, type CrmDeps } from "./crm/service";
 export { CompanyResearchService, type ResearchDeps } from "./research/service";
+export { profileFromReport, type ResearchReportLike } from "./research/profile";
 export { CampaignEngine, nextWindowStart, type CampaignEngineDeps, type TickResult } from "./campaigns/engine";
 export { SalesAnalyticsService, type SalesOverview } from "./analytics/service";
 export {
@@ -21,5 +22,6 @@ export {
   SalesPipelinePrismaRepository, SalesDealPrismaRepository,
   SalesActivityPrismaRepository, SalesCampaignPrismaRepository,
   SalesDraftPrismaRepository, SalesSavedSearchPrismaRepository,
+  SalesSettingsPrismaRepository,
   buildSalesRepositories,
 } from "./repositories/prisma";

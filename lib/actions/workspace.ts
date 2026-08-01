@@ -385,6 +385,21 @@ export async function decideApproval(
       })
     );
   }
+  // Phase 6: sales draft-review decisions propagate to the linked draft in
+  // the SAME transaction — the approvals inbox and the drafts API can never
+  // disagree. (Draft-scoped decideDraft in lib/sales/drafts.ts does the
+  // mirror-image update for the API path.)
+  if (approval.actionType === "sales.draft.review") {
+    writes.push(
+      db.salesDraft.updateMany({
+        where: { approvalId: approval.id, status: "PENDING_REVIEW" },
+        data: {
+          status: decision === "APPROVED" ? "APPROVED" : "REJECTED",
+          ...(decision === "REJECTED" ? { rejectionNote: note || null } : { rejectionNote: null }),
+        },
+      })
+    );
+  }
   await db.$transaction(writes);
 
   await audit({
