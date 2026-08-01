@@ -146,6 +146,29 @@ async function main() {
         finishedAt: new Date(),
       },
     });
+    // Phase 6 sales records so dynamic detail routes resolve.
+    const salesCompany = await db.salesCompany.create({
+      data: { workspaceId: workspace.id, name: "E2E Routes Co", domain: `routes-${stamp}.example.com`, industry: "Logistics" },
+    });
+    const salesContact = await db.salesContact.create({
+      data: { workspaceId: workspace.id, companyId: salesCompany.id, name: "E2E Routes Contact", email: `routes-${stamp}@x.invalid` },
+    });
+    const salesDraftRow = await db.salesDraft.create({
+      data: {
+        workspaceId: workspace.id, contactId: salesContact.id, companyId: salesCompany.id,
+        channel: "EMAIL", subject: "E2E routes draft", body: "Provisioned by the dashboard routing test.",
+        status: "DRAFT",
+      },
+    });
+    const salesPipeline = await db.salesPipeline.create({
+      data: {
+        workspaceId: workspace.id, name: "Default", isDefault: true,
+        stages: { create: [{ name: "Prospecting", order: 0, winProbability: 10 }] },
+      },
+    });
+    const salesCampaign = await db.salesCampaign.create({
+      data: { workspaceId: workspace.id, name: "E2E Routes Campaign", status: "DRAFT" },
+    });
     report(true, "ephemeral workspace provisioned", "owner + viewer + records");
 
     // 2 · Owner session visits every dashboard route.
@@ -188,6 +211,27 @@ async function main() {
       ["/dashboard/browser/screenshots", "Screenshots"],
       ["/dashboard/browser/permissions", "Browser Policy"],
       ["/dashboard/browser/settings", "Engine Settings"],
+      ["/dashboard/sales", "Sales Overview"],
+      ["/dashboard/sales/companies", "Sales Companies"],
+      ["/dashboard/sales/companies/new", "Sales New Company"],
+      [`/dashboard/sales/companies/${salesCompany.id}`, "Sales Company detail"],
+      ["/dashboard/sales/contacts", "Sales Contacts"],
+      ["/dashboard/sales/contacts/new", "Sales New Contact"],
+      [`/dashboard/sales/contacts/${salesContact.id}`, "Sales Contact detail"],
+      ["/dashboard/sales/research", "Sales Research"],
+      ["/dashboard/sales/campaigns", "Sales Campaigns"],
+      ["/dashboard/sales/campaigns/new", "Sales New Campaign"],
+      [`/dashboard/sales/campaigns/${salesCampaign.id}`, "Sales Campaign detail"],
+      ["/dashboard/sales/drafts", "Sales Drafts"],
+      [`/dashboard/sales/drafts/${salesDraftRow.id}`, "Sales Draft detail"],
+      ["/dashboard/sales/approvals", "Sales Approvals"],
+      ["/dashboard/sales/deals", "Sales Deals"],
+      ["/dashboard/sales/deals/new", "Sales New Deal"],
+      ["/dashboard/sales/pipelines", "Sales Pipelines"],
+      ["/dashboard/sales/tasks", "Sales Tasks"],
+      ["/dashboard/sales/meetings", "Sales Meetings"],
+      ["/dashboard/sales/analytics", "Sales Analytics"],
+      ["/dashboard/sales/settings", "Sales Settings"],
     ];
 
     console.log("\nowner route sweep:");
