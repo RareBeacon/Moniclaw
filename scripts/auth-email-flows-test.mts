@@ -97,6 +97,9 @@ async function main() {
       name: "E2E Flows",
       email,
       password,
+      // Deployments gated by AUTH_REGISTRATION_CODE require the access code;
+      // passing no/ wrong code must (and does) refuse account creation.
+      ...(process.env.AUTH_REGISTRATION_CODE ? { accessCode: process.env.AUTH_REGISTRATION_CODE } : {}),
     });
     report(
       registerRes.status === 200,

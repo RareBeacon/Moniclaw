@@ -69,8 +69,30 @@ export interface SalesDraftDto {
   campaignEnrollmentId: string | null; channel: string; subject: string | null; body: string;
   status: string; scheduledAt: string | null; sentAt: string | null; threadId: string | null;
   providerMessageId: string | null; deliveryStatus: string;
+  emailConnectionId: string | null; sendAttempts: number; sendError: string | null;
   approvalId: string | null; agentRunId: string | null; personalization: unknown;
   rejectionNote: string | null; createdById: string | null; createdAt: string; updatedAt: string;
+}
+
+/** Credential-free projection — the server never exposes the stored password. */
+export interface EmailConnectionDto {
+  id: string; workspaceId: string; provider: "SES" | "SMTP" | string; label: string;
+  senderName: string | null; senderEmail: string;
+  smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUsername: string | null;
+  region: string | null; status: "UNVERIFIED" | "VERIFIED" | "FAILED" | string;
+  isDefault: boolean; lastVerifiedAt: string | null; lastError: string | null;
+  createdAt: string; updatedAt: string;
+}
+
+export interface EmailConnectionCreateInput {
+  provider: "SES" | "SMTP";
+  label: string;
+  senderEmail: string;
+  senderName?: string;
+  region?: string; // SES — the catalog comes from email.list().sesRegions
+  smtpHost?: string; smtpPort?: number; smtpSecure?: boolean; // SMTP
+  smtpUsername?: string; password?: string;
+  isDefault?: boolean;
 }
 
 export interface SalesOverviewDto {
@@ -101,6 +123,7 @@ export class SalesClient {
   readonly campaigns: SalesCampaignsClient;
   readonly drafts: SalesDraftsClient;
   readonly searches: SalesSearchesClient;
+  readonly email: SalesEmailClient;
 
   constructor(private readonly client: MoniClawClient) {
     this.companies = new SalesCompaniesClient(client);
@@ -111,6 +134,7 @@ export class SalesClient {
     this.campaigns = new SalesCampaignsClient(client);
     this.drafts = new SalesDraftsClient(client);
     this.searches = new SalesSearchesClient(client);
+    this.email = new SalesEmailClient(client);
   }
 
   analytics() {
@@ -371,6 +395,18 @@ class SalesDraftsClient {
     return this.client.request<{ draft: SalesDraftDto }>("POST", `/api/sales/drafts/${id}/reschedule`, { scheduledAt });
   }
 
+  /**
+   * Manager's explicit "send now" on an APPROVED draft — delivers it via the
+   * workspace's default (or the given) email connection. Atomically claimed
+   * (double-click safe); a transient provider failure reschedules the draft
+   * for the cron tick, three attempts mark it FAILED.
+   */
+  send(id: string, connectionId?: string) {
+    return this.client.request<{
+      result: { draftId: string; status: "SENT" | "SCHEDULED" | "FAILED"; attempts: number; messageId?: string | null; error?: string | null };
+    }>("POST", `/api/sales/drafts/${id}/send`, connectionId ? { connectionId } : {});
+  }
+
   delete(id: string) {
     return this.client.request<{ deleted: boolean }>("DELETE", `/api/sales/drafts/${id}`);
   }
@@ -393,5 +429,40 @@ class SalesSearchesClient {
 
   delete(id: string) {
     return this.client.request<{ deleted: boolean }>("DELETE", `/api/sales/searches/${id}`);
+  }
+}
+
+class SalesEmailClient {
+  constructor(private readonly client: MoniClawClient) {}
+
+  /** Connections + the SES region catalog (render the same presets as the UI). */
+  list() {
+    return this.client.request<{
+      connections: EmailConnectionDto[];
+      sesRegions: Array<{ region: string; smtpHost: string }>;
+    }>("GET", "/api/sales/email/connections");
+  }
+
+  create(input: EmailConnectionCreateInput) {
+    return this.client.request<{ connection: EmailConnectionDto }>("POST", "/api/sales/email/connections", input);
+  }
+
+  update(id: string, patch: Partial<EmailConnectionCreateInput>) {
+    return this.client.request<{ connection: EmailConnectionDto }>("PATCH", `/api/sales/email/connections/${id}`, patch);
+  }
+
+  delete(id: string) {
+    return this.client.request<{ deleted: boolean }>("DELETE", `/api/sales/email/connections/${id}`);
+  }
+
+  /**
+   * SMTP handshake (+ optional real test email to `testTo`). Success stamps
+   * VERIFIED; failure stamps FAILED + lastError — the body carries the result
+   * either way, the HTTP status reflects it (200 verified / 502 failed).
+   */
+  verify(id: string, testTo?: string) {
+    return this.client.request<{
+      result: { status: "VERIFIED" | "FAILED"; handshake: boolean; testSent?: boolean; error?: string | null };
+    }>("POST", `/api/sales/email/connections/${id}/verify`, testTo ? { testTo } : {});
   }
 }

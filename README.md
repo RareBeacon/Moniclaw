@@ -218,6 +218,36 @@ imports in the orchestrator.
   delegation links, **kill switch** and resume-after-decision controls),
   worker fields in the new-agent form.
 
+### AI Sales Operating System (Phase 6 — complete)
+
+- **CRM spine** — companies (domain dedupe, ICP fit + priority scoring,
+  research state), contacts (email dedupe, lifecycle `NEW → CONTACTED →
+  QUALIFIED`), pipelines/stages, deals (closed-state immutability),
+  activities/tasks, saved searches, analytics overview.
+- **Research worker** — `system-sales-researcher` auto-provisioned per
+  workspace; public-source research runs through the Phase-5 worker pipeline
+  with honest terminal states, then reconciles summary/citations/fit onto the
+  company. 20/hr per-workspace dispatch limit.
+- **Campaigns** — multi-step sequences rendered from templates with sender
+  identity, tick-driven drafting into the review queue, unsubscribe + channel
+  guards, enrollment state machine.
+- **Approval-gated outreach** — drafts move `DRAFT → PENDING_REVIEW →
+  APPROVED/REJECTED` through the shared approval spine; approved drafts can
+  be scheduled. Nothing sends without a human decision.
+- **Email connections (SES/SMTP)** — connect Amazon SES (region presets) or
+  any SMTP identity under Sales → Settings; credentials sealed in the
+  AES-256-GCM vault and never echoed back; verify = real handshake + optional
+  test mail; statuses are honest (`UNVERIFIED/VERIFIED/FAILED + lastError`).
+  Approved drafts send via the default identity — manual **Send now**
+  (manager) or the daily tick; atomic claims prevent double delivery,
+  transient failures retry on the tick, 3 attempts = FAILED.
+- **Sales tools in the agent runtime** — read tools (company/contact search,
+  pipeline snapshot) plus a guarded `sales_activity_log` mutation; agents
+  compose them under the same policy/rate-limit envelopes.
+- **Access gate (optional)** — set `AUTH_REGISTRATION_CODE` and signup
+  requires the code (constant-time compare): “only us” mode without touching
+  the allowlist code.
+
 ### Permission model (rank-based RBAC)
 
 `VIEWER < MEMBER < MANAGER < ADMIN < OWNER` — each capability declares a

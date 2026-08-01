@@ -20,6 +20,11 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
+/** When the deployment wires a platform fallback key (OPENROUTER_API_KEY /
+ *  GEMINI_API_KEY), "no provider" 409s are no longer the designed outcome —
+ *  the provider is INVOKED and either answers or fails honestly (classified
+ *  502 / degraded 200). Assertions below branch on this. */
+const PROVIDER_WIRED = Boolean(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
 const DATABASE_URL = process.env.DATABASE_URL;
 
 let failures = 0;
@@ -125,8 +130,12 @@ async function main() {
       messages: [{ role: "user", content: "hello" }],
     });
     report(
-      chat.status === 409 && !chat.body.ok && chat.body.error === "no_provider",
-      "POST /api/ai/chat without keys → graceful 409 no_provider",
+      PROVIDER_WIRED
+        ? chat.status === 200 || (chat.status === 502 && !chat.body.ok && chat.body.error === "providers_failed")
+        : chat.status === 409 && !chat.body.ok && chat.body.error === "no_provider",
+      PROVIDER_WIRED
+        ? "platform provider wired → chat replies or fails HONESTLY (502 providers_failed, e.g. free-tier daily cap)"
+        : "POST /api/ai/chat without keys → graceful 409 no_provider",
       `→ ${chat.status} ${chat.body.ok ? "" : chat.body.error}`
     );
 
@@ -136,8 +145,10 @@ async function main() {
       body: JSON.stringify({ messages: [{ role: "user", content: "hi" }], stream: true }),
     });
     report(
-      chatStream.status === 409,
-      "POST /api/ai/chat stream:true without keys → same 409",
+      PROVIDER_WIRED ? chatStream.status === 200 || chatStream.status === 502 : chatStream.status === 409,
+      PROVIDER_WIRED
+        ? "platform provider wired → SSE stream opens (200; upstream errors surface as stream frames) or honest 502"
+        : "POST /api/ai/chat stream:true without keys → same 409",
       `→ ${chatStream.status}`
     );
     await chatStream.arrayBuffer();
@@ -176,10 +187,16 @@ async function main() {
     const kSearch = await api<{ results: unknown[]; empty: boolean }>(cookie, "POST", "/api/ai/knowledge/search", { query: "refunds" });
     // Unlike memory (which keeps an importance-ordered fallback), knowledge
     // retrieval is vector-only — honest 409 until a workspace adds a key.
+    // With a platform provider wired (chat-only key, no embedder) the service
+    // degrades honestly to 200 + zero results instead of throwing.
     report(
-      kSearch.status === 409 && !kSearch.body.ok && kSearch.body.error === "no_provider",
-      "POST /api/ai/knowledge/search without embedder → 409 no_provider",
-      `→ ${kSearch.status} ${kSearch.body.ok ? "" : kSearch.body.error}`
+      PROVIDER_WIRED
+        ? kSearch.status === 200 && kSearch.body.ok === true
+        : kSearch.status === 409 && !kSearch.body.ok && kSearch.body.error === "no_provider",
+      PROVIDER_WIRED
+        ? "knowledge search degrades honestly with chat-only platform key (200, zero results — no crash)"
+        : "POST /api/ai/knowledge/search without embedder → 409 no_provider",
+      `→ ${kSearch.status} ${kSearch.body.ok ? "" : kSearch.body.error ?? ""}`
     );
     const kDocs = await api<{ documents: unknown[] }>(cookie, "GET", "/api/ai/knowledge/documents");
     report(kDocs.status === 200 && kDocs.body.ok, "GET /api/ai/knowledge/documents → 200");

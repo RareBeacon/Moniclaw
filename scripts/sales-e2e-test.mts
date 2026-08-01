@@ -22,6 +22,9 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3100";
+/** Loopback-only behaviours (the in-process SMTP sink) are asserted locally;
+ *  against a remote deployment the same steps must instead fail HONESTLY. */
+const LOCAL = /localhost|127\.0\.0\.1/.test(BASE);
 const DATABASE_URL = process.env.DATABASE_URL;
 const CRON_SECRET = process.env.CRON_SECRET;
 
@@ -419,12 +422,20 @@ async function main() {
       report(listed.sesRegions.some((r) => r.smtpHost === "email-smtp.eu-west-1.amazonaws.com"),
         "SES region host presets exposed to clients");
 
-      const verified = dataOf<{ result: { status: string } }>(
-        await api(cookie, "POST", `/api/sales/email/connections/${connectionId}/verify`, { testTo: "check@acme.internal" })
-      );
-      report(verified.result.status === "VERIFIED", "SMTP handshake verified (+ optional test email)");
-      report(sink.messages.some((m) => m.data.includes("MoniClaw email connection check")),
-        "verification test email delivered over the wire");
+      const verifiedRes = await api(cookie, "POST", `/api/sales/email/connections/${connectionId}/verify`, { testTo: "check@acme.internal" });
+      if (LOCAL) {
+        const verified = dataOf<{ result: { status: string } }>(verifiedRes);
+        report(verified.result.status === "VERIFIED", "SMTP handshake verified (+ optional test email)");
+        report(sink.messages.some((m) => m.data.includes("MoniClaw email connection check")),
+          "verification test email delivered over the wire");
+      } else {
+        // The sink runs on THIS harness host — a remote server cannot reach
+        // 127.0.0.1 here, so the handshake must fail honestly.
+        report(verifiedRes.status === 502, "remote target → unreachable loopback sink: verify fails HONESTLY (502)", `→ ${verifiedRes.status}`);
+        const row = await db.emailConnection.findUnique({ where: { id: connectionId } });
+        report(row?.status === "FAILED" && !!row.lastError,
+          "handshake failure stamped on the connection (FAILED + lastError, never fake VERIFIED)");
+      }
 
       const bad = dataOf<{ connection: { id: string } }>(
         await api(cookie, "POST", "/api/sales/email/connections", {
@@ -456,24 +467,45 @@ async function main() {
       });
       report(scheduled.status === 200, "approved draft scheduled");
 
-      const sent = dataOf<{ result: { status: string; messageId?: string | null; attempts: number } }>(
-        await api(cookie, "POST", `/api/sales/drafts/${draftRow.draft.id}/send`, {})
-      );
-      report(sent.result.status === "SENT" && !!sent.result.messageId,
-        "approved draft DELIVERED via connected identity", `attempts=${sent.result.attempts}`);
-      report(
-        sink.messages.some((m) => m.data.includes("Re: dispatch pilot") && m.data.includes("dispatch pilot") && m.to.some((t) => t.includes("grace@bigco.example"))),
-        "sink captured the real message (to/subject/body)"
-      );
+      const sentRes = await api(cookie, "POST", `/api/sales/drafts/${draftRow.draft.id}/send`, {});
+      if (LOCAL) {
+        const sent = dataOf<{ result: { status: string; messageId?: string | null; attempts: number } }>(sentRes);
+        report(sent.result.status === "SENT" && !!sent.result.messageId,
+          "approved draft DELIVERED via connected identity", `attempts=${sent.result.attempts}`);
+        report(
+          sink.messages.some((m) => m.data.includes("Re: dispatch pilot") && m.data.includes("dispatch pilot") && m.to.some((t) => t.includes("grace@bigco.example"))),
+          "sink captured the real message (to/subject/body)"
+        );
 
-      const redeliver = await api(cookie, "POST", `/api/sales/drafts/${draftRow.draft.id}/send`, {});
-      report(redeliver.status === 409, "re-sending a SENT draft is 409 — no double delivery");
+        const redeliver = await api(cookie, "POST", `/api/sales/drafts/${draftRow.draft.id}/send`, {});
+        report(redeliver.status === 409, "re-sending a SENT draft is 409 — no double delivery");
 
-      const contactAfterSend = dataOf<{ contact: { status: string; lastTouchedAt: string | null } }>(
-        await api(cookie, "GET", `/api/sales/contacts/${emailContact.contact.id}`)
-      );
-      report(contactAfterSend.contact.status === "CONTACTED" && !!contactAfterSend.contact.lastTouchedAt,
-        "recipient advanced NEW → CONTACTED with touch timestamp");
+        const contactAfterSend = dataOf<{ contact: { status: string; lastTouchedAt: string | null } }>(
+          await api(cookie, "GET", `/api/sales/contacts/${emailContact.contact.id}`)
+        );
+        report(contactAfterSend.contact.status === "CONTACTED" && !!contactAfterSend.contact.lastTouchedAt,
+          "recipient advanced NEW → CONTACTED with touch timestamp");
+      } else {
+        // Remote target cannot reach the loopback sink → honest failure only:
+        // never SENT, attempts counted, error persisted, recipient untouched.
+        report(sentRes.status === 200 || sentRes.status === 502, "send via unreachable SMTP: coherent response (no 500/timeout)", `→ ${sentRes.status}`);
+        const sentBody = sentRes.status === 200
+          ? dataOf<{ result: { status: string; messageId?: string | null; attempts: number; error?: string | null } }>(sentRes).result
+          : null;
+        report(sentBody === null || (sentBody.status !== "SENT" && !sentBody.messageId),
+          "unreachable SMTP → draft NOT marked sent (honest failure)", `status=${sentBody?.status ?? "FAILED/502"}`);
+        const draftDb = await db.salesDraft.findUnique({ where: { id: draftRow.draft.id } });
+        report((draftDb?.sendAttempts ?? 0) >= 1 && !!draftDb?.sendError && draftDb?.status !== "SENT",
+          "attempt counted + error persisted on the draft row");
+        const contactAfterFail = dataOf<{ contact: { status: string; lastTouchedAt: string | null } }>(
+          await api(cookie, "GET", `/api/sales/contacts/${emailContact.contact.id}`)
+        );
+        report(contactAfterFail.contact.status === "NEW" && !contactAfterFail.contact.lastTouchedAt,
+          "recipient NOT advanced on failed send (NEW, no touch timestamp)");
+        // Don't leave the failed draft retrying forever against a dead endpoint.
+        await db.salesDraft.update({ where: { id: draftRow.draft.id }, data: { scheduledAt: null } }).catch(() => {});
+        await api(cookie, "DELETE", `/api/sales/email/connections/${connectionId}`).catch(() => {});
+      }
 
       const delBad = await api(cookie, "DELETE", `/api/sales/email/connections/${bad.connection.id}`);
       report(delBad.status === 200, "dead connection deleted");

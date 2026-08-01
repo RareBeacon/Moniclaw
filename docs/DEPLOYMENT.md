@@ -44,6 +44,7 @@ Production + Preview unless noted). Names only — values live in Vercel's vault
 | `AUTH_TRUST_HOST` | `true` (required; harmless on Vercel, mandatory elsewhere) |
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Optional; Google OAuth |
 | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET` | Optional; GitHub OAuth |
+| `AUTH_REGISTRATION_CODE` | Optional (Phase 6). When set, signup requires this access code (constant-time compare) — "invitation-only" mode without an email allowlist. Changing it requires a redeploy. |
 | `RESEND_API_KEY` | Optional; email delivery (console fallback without it) |
 | `EMAIL_FROM` | Optional; verified sender, e.g. `MoniClaw <no-reply@yourdomain.com>` |
 | `GEMINI_API_KEY` | Optional; env-fallback AI provider for workspaces without their own keys (AI Studio free tier) |
@@ -78,8 +79,10 @@ automatically (`postinstall` runs `prisma generate`).
   daily crons — for a finer cadence (e.g. every minute), schedule the same
   endpoint externally with the `CRON_SECRET` bearer; the route is idempotent
   and minute-safe (per-minute cron dispatch keys), so overlapping calls are
-  harmless. The tick evaluates due cron workers, reaps zombie runs and
-  rescues lost dispatches.
+  harmless. The tick evaluates due cron workers, reaps zombie runs, rescues
+  lost dispatches, advances sales campaign enrollments and **delivers due
+  approved sales email drafts** (Phase 6) — its response reports
+  `campaigns` and `email` blocks for observability.
 
 ## 5 · Database migrations (run once per release, after env vars exist)
 
