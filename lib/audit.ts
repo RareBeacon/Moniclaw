@@ -130,6 +130,10 @@ export const AUDIT_ACTIONS = {
   salesDraftSent: "sales.draft.sent",
   salesDraftSendFailed: "sales.draft.send_failed",
   salesEmailTick: "sales.email.tick",
+  agentTeamCreate: "agents.team.create",
+  agentTeamUpdate: "agents.team.update",
+  agentTeamDelete: "agents.team.delete",
+  agentTeamRun: "agents.team.run",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

@@ -39,6 +39,7 @@ import {
   Target,
   Upload,
   Users,
+  UsersRound,
   Workflow,
   Zap,
   type LucideIcon,
@@ -67,6 +68,7 @@ const sections: NavSection[] = [
     items: [
       { href: "/dashboard", label: "Overview", icon: LayoutDashboard, permission: "agents.read" },
       { href: "/dashboard/agents", label: "Agents", icon: Bot, permission: "agents.read" },
+      { href: "/dashboard/teams", label: "Teams", icon: UsersRound, permission: "agents.read" },
       { href: "/dashboard/runs", label: "Runs", icon: History, permission: "agents.read" },
       { href: "/dashboard/approvals", label: "Approvals", icon: ShieldCheck, permission: "approvals.read", badge: true },
     ],

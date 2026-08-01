@@ -50,6 +50,9 @@ model User {
   knowledgeEntries KnowledgeEntry[]
   assets           Asset[]
 
+  // Phase 7 · Multi-agent teams
+  agentTeamsCreated AgentTeam[]
+
   // AI Runtime (Phase 3)
   aiProviderConfigsCreated AiProviderConfig[]
   aiSettingsUpdated        AiWorkspaceSettings[]
@@ -159,6 +162,7 @@ model Workspace {
   invitations WorkspaceInvitation[]
   agents      Agent[]
   agentsRuns  AgentRun[]
+  agentTeams  AgentTeam[]
   credentials VaultEntry[]
   knowledge   KnowledgeEntry[]
   assets      Asset[]
@@ -291,6 +295,10 @@ model Agent {
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   runs      AgentRun[]
 
+  // Phase 7 · Multi-agent teams
+  teamMemberships AgentTeamMember[]
+  ledTeams        AgentTeam[]       @relation("TeamLeader")
+
   // AI Runtime (Phase 3)
   memoryRecords   MemoryRecord[]
   aiConversations AiConversation[]
@@ -332,6 +340,7 @@ model AgentRun {
   // ── Phase 5 · run orchestration (all additive) ──
   parentRunId     String?
   depth           Int     @default(0) // delegation nesting; cap from budget
+  teamId          String? // Phase 7 — set when dispatched as a team run
   plan            Json? // validated planner decomposition
   progress        Json? // {nextIndex, trace summary} checkpoint for resume
   budgetSnapshot  Json? // resolved budget at dispatch (immutable per run)
@@ -344,6 +353,7 @@ model AgentRun {
 
   agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  team      AgentTeam? @relation(fields: [teamId], references: [id], onDelete: SetNull)
   parent    AgentRun?  @relation("RunDelegation", fields: [parentRunId], references: [id], onDelete: SetNull)
   children  AgentRun[] @relation("RunDelegation")
   events    RunEvent[]
@@ -358,7 +368,53 @@ model AgentRun {
   @@index([workspaceId, status, createdAt])
   @@index([agentId, createdAt])
   @@index([parentRunId])
+  @@index([teamId])
   @@map("agent_runs")
+}
+
+/// Phase 7 — Multi-agent teams. A team is a NAMED, REUSABLE delegation
+/// topology: one leader agent + member agents with playbook hints. Running a
+/// team dispatches the leader through the exact same orchestrator path as a
+/// solo run — with a composed team briefing and the run stamped `teamId`.
+/// Delegation itself stays capability-gated (leader.toolPolicy.allowDelegation),
+/// depth-capped, budget-shared and cycle-guarded by the Phase 5 engine.
+model AgentTeam {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  name          String
+  slug          String
+  description   String?
+  leaderAgentId String?
+  budget        Json? // partial WorkerBudget applied to every team run (override)
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  leader    Agent?            @relation("TeamLeader", fields: [leaderAgentId], references: [id], onDelete: SetNull)
+  members   AgentTeamMember[]
+  runs      AgentRun[]
+  createdBy User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@map("agent_teams")
+}
+
+model AgentTeamMember {
+  id         String   @id @default(uuid())
+  teamId     String
+  agentId    String
+  promptHint String? // short playbook note surfaced to the leader in the briefing
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  team  AgentTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  agent Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, agentId])
+  @@index([agentId])
+  @@map("agent_team_members")
 }
 
 model RunEvent {

@@ -158,3 +158,90 @@ export async function updateAgentWorkerConfig(agentId: string, input: unknown): 
   revalidatePath("/dashboard/agents");
   return { ok: true };
 }
+
+// ── Phase 7 · Multi-agent teams ──────────────────────────────────────────
+
+import {
+  createTeam,
+  updateTeam,
+  deleteTeam,
+  runTeam,
+  type TeamInput,
+} from "@/lib/agents/teams";
+import {
+  teamCreateApiSchema,
+  teamUpdateApiSchema,
+  teamRunApiSchema,
+} from "@/lib/validations/agents";
+
+/** Create a team (leader + roster). */
+export async function createAgentTeam(input: TeamInput): Promise<ActionState> {
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
+  const denied = checkPermission(ctx, "agents.create");
+  if (denied) return { error: denied };
+  const parsed = teamCreateApiSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check your inputs." };
+  try {
+    const team = await createTeam(ctx.workspace.id, ctx.user.id, parsed.data);
+    revalidatePath("/dashboard/teams");
+    return { ok: true, value: team.id };
+  } catch (err) {
+    return agentError(err, "Could not create the team.");
+  }
+}
+
+/** Update team fields; `members` (when present) replaces the roster. */
+export async function updateAgentTeam(id: string, patch: Partial<TeamInput>): Promise<ActionState> {
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
+  const denied = checkPermission(ctx, "agents.create");
+  if (denied) return { error: denied };
+  const parsed = teamUpdateApiSchema.safeParse(patch);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check your inputs." };
+  try {
+    await updateTeam(ctx.workspace.id, ctx.user.id, id, parsed.data);
+    revalidatePath("/dashboard/teams");
+    revalidatePath(`/dashboard/teams/${id}`);
+    return { ok: true };
+  } catch (err) {
+    return agentError(err, "Could not update the team.");
+  }
+}
+
+/** Delete a team; historical runs keep their lineage (teamId cleared). */
+export async function deleteAgentTeam(id: string): Promise<ActionState> {
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
+  const denied = checkPermission(ctx, "agents.create");
+  if (denied) return { error: denied };
+  try {
+    await deleteTeam(ctx.workspace.id, ctx.user.id, id);
+    revalidatePath("/dashboard/teams");
+    return { ok: true };
+  } catch (err) {
+    return agentError(err, "Could not delete the team.");
+  }
+}
+
+/** Dispatch the team: leader + composed briefing through the same orchestrator. */
+export async function runAgentTeam(id: string, input: { goal: string; mode?: "LIVE" | "SHADOW" }): Promise<ActionState> {
+  const resolved = await resolveWorkspaceContext();
+  if ("error" in resolved) return { error: resolved.error };
+  const { ctx } = resolved;
+  const denied = checkPermission(ctx, "agents.run");
+  if (denied) return { error: denied };
+  const parsed = teamRunApiSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check your inputs." };
+  try {
+    const result = await runTeam(ctx.workspace.id, ctx.user.id, id, parsed.data);
+    revalidatePath("/dashboard/runs");
+    revalidatePath(`/dashboard/teams/${id}`);
+    return { ok: true, value: result.run.id };
+  } catch (err) {
+    return agentError(err, "Could not queue the team run.");
+  }
+}

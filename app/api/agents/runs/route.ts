@@ -13,12 +13,14 @@ export async function GET(request: Request) {
     const query = runListQuerySchema.parse({
       agentId: url.searchParams.get("agentId") ?? undefined,
       status: url.searchParams.get("status") ?? undefined,
+      teamId: url.searchParams.get("teamId") ?? undefined,
       limit: url.searchParams.get("limit") ?? undefined,
     });
     const runtime = getAgentRuntime();
     const runs = await runtime.repos.runs.list(g.principal.workspace.id, {
       ...(query.agentId ? { agentId: query.agentId } : {}),
       ...(query.status ? { status: query.status } : {}),
+      ...(query.teamId ? { teamId: query.teamId } : {}),
       limit: query.limit,
     });
     return ok({ runs });

@@ -19,7 +19,7 @@ import {
   workspaceSettingsSchema,
 } from "@/lib/validations/workspace";
 
-export type ActionState = { error?: string; ok?: boolean };
+export type ActionState = { error?: string; ok?: boolean; value?: string };
 
 // ── Workspace lifecycle ──────────────────────────────────────────────
 

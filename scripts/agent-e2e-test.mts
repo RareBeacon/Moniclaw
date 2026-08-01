@@ -334,6 +334,102 @@ async function main() {
 
     const cross = await api(owner, "GET", `/api/agents/runs?agentId=${agentId}&status=FAILED`);
     report(cross.status === 200 && cross.body.ok, "GET /api/agents/runs filtered by agent+status", `→ ${cross.status}`);
+
+    console.log("\nmulti-agent teams (Phase 7):");
+    // Member worker + delegation capability on the leader.
+    const memberCreated = await api<{ agent: { id: string; slug: string } }>(owner, "POST", "/api/agents", {
+      name: "E2E Scribe",
+      slug: `scribe-${stamp}`,
+      description: "Drafts persuasive, on-brand outreach from research briefs and files it for review.",
+      workerType: "general",
+      goal: "Draft outreach that sounds hand-written.",
+    });
+    const memberId = memberCreated.body.data?.agent?.id;
+    report(memberCreated.status === 201 && !!memberId, "member worker created (scribe)", `→ ${memberCreated.status}`);
+    const leaderPolicy = await api(owner, "PATCH", `/api/agents/${agentId}`, { toolPolicy: { allowDelegation: true } });
+    report(leaderPolicy.status === 200 && leaderPolicy.body.ok, "leader gains allowDelegation capability", `→ ${leaderPolicy.status}`);
+
+    const viewerTeam = await api(viewer, "POST", "/api/agent-teams", { name: "Viewer Crew" });
+    report(viewerTeam.status === 403, "viewer cannot create teams (agents.create is Member+)", `→ ${viewerTeam.status}`);
+
+    const leaderAsMember = await api(owner, "POST", "/api/agent-teams", {
+      name: "Schrödinger Crew",
+      leaderAgentId: agentId,
+      members: [{ agentId, promptHint: "impossible" }],
+    });
+    report(leaderAsMember.status === 400, "leader-as-member refused (validation)", `→ ${leaderAsMember.status}`);
+
+    const teamCreated = await api<{ team: { id: string; slug: string } }>(owner, "POST", "/api/agent-teams", {
+      name: "E2E Outbound Crew",
+      description: "Research then write.",
+      leaderAgentId: agentId,
+      members: [{ agentId: memberId!, promptHint: "Hand briefs to the scribe for drafting." }],
+      budget: { maxSteps: 8, maxDepth: 1 },
+    });
+    report(teamCreated.status === 201 && teamCreated.body.ok, "team created (leader + 1 member + budget)", `→ ${teamCreated.status}`);
+    const teamId = teamCreated.body.data!.team.id;
+
+    const teamList = await api<{ teams: Array<{ id: string; members: unknown[]; leader: { slug: string } | null }> }>(owner, "GET", "/api/agent-teams");
+    const listedTeam = teamList.body.data?.teams.find((t) => t.id === teamId);
+    report(
+      teamList.status === 200 && !!listedTeam && listedTeam.members.length === 1 && listedTeam.leader !== null,
+      "GET /api/agent-teams → roster hydrated"
+    );
+
+    const noGoal = await api(owner, "POST", `/api/agent-teams/${teamId}/run`, {});
+    report(noGoal.status === 400, "team run without a goal → 400 (runs need a concrete objective)", `→ ${noGoal.status}`);
+
+    const teamRun = await api<{ run: { id: string; status: string }; deduplicated: boolean }>(
+      owner, "POST", `/api/agent-teams/${teamId}/run`,
+      { goal: "Research Acme Logistics and draft a two-paragraph intro.", idempotencyKey: `e2e-${stamp}` }
+    );
+    report(teamRun.status === 202 && teamRun.body.ok && !teamRun.body.data!.deduplicated,
+      "team run dispatched through the standard orchestrator (202)", `→ ${teamRun.status}`);
+
+    const runRow = await db.agentRun.findUnique({
+      where: { id: teamRun.body.data!.run.id },
+      select: { teamId: true, triggerSource: true, budgetSnapshot: true },
+    });
+    report(runRow?.teamId === teamId && runRow.triggerSource === "team",
+      "run stamped teamId + triggerSource=team (lineage)");
+    const snapshot = (runRow?.budgetSnapshot ?? {}) as { maxSteps?: number };
+    report(snapshot.maxSteps === 8, "team budget override resolved into the run's snapshot", `maxSteps=${snapshot.maxSteps ?? "?"}`);
+
+    const dupRun = await api<{ deduplicated: boolean }>(owner, "POST", `/api/agent-teams/${teamId}/run`, {
+      goal: "Research Acme Logistics and draft a two-paragraph intro.", idempotencyKey: `e2e-${stamp}`,
+    });
+    report(dupRun.status === 200 && dupRun.body.ok && dupRun.body.data!.deduplicated === true,
+      "same idempotency key → deduplicated (no double team run)");
+
+    const teamRuns = await api<{ runs: Array<{ id: string }> }>(owner, "GET", `/api/agents/runs?teamId=${teamId}`);
+    report(teamRuns.status === 200 && (teamRuns.body.data?.runs.length ?? 0) >= 1,
+      "runs feed filters by teamId");
+
+    const renamed = await api(owner, "PATCH", `/api/agent-teams/${teamId}`, { name: "E2E Outbound Crew v2" });
+    report(renamed.status === 200 && renamed.body.ok, "team renamed via PATCH");
+
+    // Delegation capability gate: a leader WITHOUT allowDelegation is refused.
+    const plainAgent = await api<{ agent: { id: string } }>(owner, "POST", "/api/agents", {
+      name: "E2E Solo", slug: `solo-${stamp}`,
+      description: "A capable worker that has not been granted the delegation capability.",
+      goal: "Work alone.",
+    });
+    const plainId = plainAgent.body.data!.agent.id;
+    await api(owner, "PATCH", `/api/agents/${plainId}`, { status: "SHADOW" });
+    const noTeam2 = await api<{ team: { id: string } }>(owner, "POST", "/api/agent-teams", {
+      name: "Gate Check Crew", leaderAgentId: plainId, members: [{ agentId: memberId! }],
+    });
+    const refused = await api(owner, "POST", `/api/agent-teams/${noTeam2.body.data!.team.id}/run`, { goal: "Try to delegate anyway." });
+    report(
+      refused.status === 403 && !refused.body.ok && refused.body.error === "delegation_denied",
+      "leader without allowDelegation → 403 delegation_denied (safe-by-default)",
+      `→ ${refused.status} ${!refused.body.ok ? refused.body.error : ""}`
+    );
+
+    const del = await api(owner, "DELETE", `/api/agent-teams/${teamId}`);
+    report(del.status === 200 && del.body.ok, "team deleted");
+    const runAfter = await db.agentRun.findUnique({ where: { id: teamRun.body.data!.run.id }, select: { id: true, teamId: true } });
+    report(!!runAfter && runAfter.teamId === null, "run evidence preserved after team delete (teamId → NULL)");
   } finally {
     if (workspaceId) {
       await db.auditLog.deleteMany({ where: { workspaceId } });

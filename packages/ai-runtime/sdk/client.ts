@@ -11,6 +11,7 @@
  */
 
 import { SalesClient } from "./sales";
+import { AgentsClient } from "./agents";
 
 export interface MoniClawClientOptions {
   /** Base URL of the deployment (no trailing slash). */
@@ -54,6 +55,7 @@ export class MoniClawClient {
   readonly workflows: WorkflowsClient;
   readonly usage: UsageClient;
   readonly sales: SalesClient;
+  readonly agents: AgentsClient;
 
   readonly baseUrl: string;
   readonly apiKey: string;
@@ -73,6 +75,7 @@ export class MoniClawClient {
     this.workflows = new WorkflowsClient(this);
     this.usage = new UsageClient(this);
     this.sales = new SalesClient(this);
+    this.agents = new AgentsClient(this);
   }
 
   /** Internal transport — exported for advanced/raw calls. */

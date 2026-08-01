@@ -48,9 +48,36 @@ export const agentUpdateApiSchema = z.object({
 
 export const dispatchApiSchema = dispatchSchema;
 
+// ── Phase 7 · Multi-agent teams ──────────────────────────────────────────
+
+const teamMemberSchema = z.object({
+  agentId: z.string().uuid(),
+  promptHint: z.string().trim().min(3).max(240).nullish(),
+  position: z.coerce.number().int().min(0).max(99).default(0),
+});
+
+export const teamCreateApiSchema = z.object({
+  name: z.string().trim().min(2).max(60),
+  slug: z.string().trim().min(2).max(60).regex(/^[a-z0-9][a-z0-9-]*$/, "lowercase, digits, dashes").optional(),
+  description: z.string().trim().max(500).nullish(),
+  leaderAgentId: z.string().uuid().nullish(),
+  members: z.array(teamMemberSchema).max(12).default([]),
+  budget: workerBudgetSchema.partial().optional(),
+});
+
+export const teamUpdateApiSchema = teamCreateApiSchema.partial();
+
+/** Team runs need a concrete objective (the leader delegates against it). */
+export const teamRunApiSchema = z.object({
+  goal: z.string().trim().min(3).max(2000),
+  mode: z.enum(["LIVE", "SHADOW"]).optional(),
+  idempotencyKey: z.string().trim().min(4).max(120).optional(),
+});
+
 export const runListQuerySchema = z.object({
   agentId: z.string().uuid().optional(),
   status: z.enum(["QUEUED", "RUNNING", "NEEDS_APPROVAL", "SUCCEEDED", "FAILED", "CANCELED"]).optional(),
+  teamId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 

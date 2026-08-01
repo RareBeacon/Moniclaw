@@ -202,6 +202,8 @@ async function main() {
       ["/dashboard/prompts", "Prompt Manager"],
       ["/dashboard/workflows", "Workflow Builder"],
       ["/dashboard/ai-providers", "AI Providers"],
+      ["/dashboard/teams", "Agent teams"],
+      ["/dashboard/teams/new", "New team"],
       ["/dashboard/browser", "Browser Sessions"],
       ["/dashboard/browser/live", "Live Execution"],
       ["/dashboard/browser/recordings", "Recordings"],

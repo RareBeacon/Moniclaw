@@ -100,7 +100,7 @@ export class AgentRunPrismaRepository implements AgentRunRepository {
 
   async list(workspaceId: string, opts?: {
     agentId?: string; status?: AgentRunStatus; parentRunId?: string | null;
-    limit?: number; before?: Date;
+    teamId?: string; limit?: number; before?: Date;
   }): Promise<AgentRunRow[]> {
     const rows = await this.db.agentRun.findMany({
       where: {
@@ -108,6 +108,7 @@ export class AgentRunPrismaRepository implements AgentRunRepository {
         ...(opts?.agentId ? { agentId: opts.agentId } : {}),
         ...(opts?.status ? { status: opts.status } : {}),
         ...(opts?.parentRunId !== undefined ? { parentRunId: opts.parentRunId } : {}),
+        ...(opts?.teamId ? { teamId: opts.teamId } : {}),
         ...(opts?.before ? { createdAt: { lt: opts.before } } : {}),
       },
       orderBy: { createdAt: "desc" },

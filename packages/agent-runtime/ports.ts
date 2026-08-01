@@ -109,7 +109,7 @@ export interface AgentRunRepository {
   findByIdempotency(agentId: string, key: string): Promise<AgentRunRow | null>;
   list(workspaceId: string, opts?: {
     agentId?: string; status?: AgentRunStatus; parentRunId?: string | null;
-    limit?: number; before?: Date;
+    teamId?: string; limit?: number; before?: Date;
   }): Promise<AgentRunRow[]>;
   listChildren(parentRunId: string): Promise<AgentRunRow[]>;
   countActiveByAgent(agentId: string): Promise<number>;
