@@ -75,7 +75,7 @@ export async function guard(
   if (opts?.rate) {
     const policy = RATE_LIMITS[opts.rate];
     const key = `${opts.rate}:${principal!.workspace.id}`;
-    const verdict = rateLimit(key, policy.limit, policy.windowMs);
+    const verdict = await rateLimit(key, policy.limit, policy.windowMs);
     if (!verdict.success) {
       return {
         response: fail(429, "rate_limited", `Too many requests — retry in ${verdict.retryAfterSeconds}s.`),

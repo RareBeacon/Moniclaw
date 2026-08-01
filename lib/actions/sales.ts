@@ -119,7 +119,7 @@ export async function deleteCompanyAction(id: string): Promise<ActionState> {
 export async function requestResearchAction(companyId: string): Promise<ActionState & { runId?: string }> {
   const g = await context("sales.research.run");
   if ("error" in g) return { error: g.error };
-  const verdict = rateLimit(`salesResearch:${g.ctx.workspace.id}`, RATE_LIMITS.salesResearch.limit, RATE_LIMITS.salesResearch.windowMs);
+  const verdict = await rateLimit(`salesResearch:${g.ctx.workspace.id}`, RATE_LIMITS.salesResearch.limit, RATE_LIMITS.salesResearch.windowMs);
   if (!verdict.success) return { error: `Too many research requests — retry in ${verdict.retryAfterSeconds}s.` };
   try {
     const result = await getSalesRuntime().research.requestResearch(g.ctx.workspace.id, companyId, g.ctx.user.id);
@@ -590,7 +590,7 @@ export async function deleteSearchAction(id: string): Promise<ActionState> {
 export async function createEmailConnectionAction(input: unknown): Promise<ActionState> {
   const g = await context("sales.settings.manage");
   if ("error" in g) return { error: g.error };
-  const gate = rateLimit(`salesEmailConnection:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailConnection.limit, RATE_LIMITS.salesEmailConnection.windowMs);
+  const gate = await rateLimit(`salesEmailConnection:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailConnection.limit, RATE_LIMITS.salesEmailConnection.windowMs);
   if (!gate.success) return { error: `Too many connection changes. Try again in ${gate.retryAfterSeconds}s.` };
   try {
     const parsed = emailConnectionCreateApiSchema.parse(input);
@@ -605,7 +605,7 @@ export async function createEmailConnectionAction(input: unknown): Promise<Actio
 export async function updateEmailConnectionAction(id: string, input: unknown): Promise<ActionState> {
   const g = await context("sales.settings.manage");
   if ("error" in g) return { error: g.error };
-  const gate = rateLimit(`salesEmailConnection:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailConnection.limit, RATE_LIMITS.salesEmailConnection.windowMs);
+  const gate = await rateLimit(`salesEmailConnection:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailConnection.limit, RATE_LIMITS.salesEmailConnection.windowMs);
   if (!gate.success) return { error: `Too many connection changes. Try again in ${gate.retryAfterSeconds}s.` };
   try {
     const parsed = emailConnectionUpdateApiSchema.parse(input);
@@ -632,7 +632,7 @@ export async function deleteEmailConnectionAction(id: string): Promise<ActionSta
 export async function verifyEmailConnectionAction(id: string, testTo?: string): Promise<ActionState> {
   const g = await context("sales.settings.manage");
   if ("error" in g) return { error: g.error };
-  const gate = rateLimit(`salesEmailVerify:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailVerify.limit, RATE_LIMITS.salesEmailVerify.windowMs);
+  const gate = await rateLimit(`salesEmailVerify:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailVerify.limit, RATE_LIMITS.salesEmailVerify.windowMs);
   if (!gate.success) return { error: `Too many verification attempts. Try again in ${gate.retryAfterSeconds}s.` };
   try {
     const result = await verifyConnection(g.ctx.workspace.id, g.ctx.user.id, id, {
@@ -651,7 +651,7 @@ export async function verifyEmailConnectionAction(id: string, testTo?: string): 
 export async function sendDraftNowAction(id: string): Promise<ActionState> {
   const g = await context("sales.drafts.review");
   if ("error" in g) return { error: g.error };
-  const gate = rateLimit(`salesEmailSend:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailSend.limit, RATE_LIMITS.salesEmailSend.windowMs);
+  const gate = await rateLimit(`salesEmailSend:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailSend.limit, RATE_LIMITS.salesEmailSend.windowMs);
   if (!gate.success) return { error: `Too many sends. Try again in ${gate.retryAfterSeconds}s.` };
   try {
     const result = await sendDraft(g.ctx.workspace.id, g.ctx.user.id, id);

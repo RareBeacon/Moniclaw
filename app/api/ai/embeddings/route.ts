@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const guard = requirePrincipal(principal, "ai.chat");
     if (guard) return guard;
 
-    const gate = rateLimit(
+    const gate = await rateLimit(
       `aiEmbed:${principal!.workspace.id}`,
       RATE_LIMITS.aiEmbed.limit,
       RATE_LIMITS.aiEmbed.windowMs

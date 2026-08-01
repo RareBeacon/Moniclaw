@@ -563,6 +563,20 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+/// Phase 9 — durable rate-limit buckets. Fixed-window counters shared across
+/// every serverless instance (the in-memory limiter stays as the unit-test
+/// store and circuit-breaker fallback). One row per (policy:scope) key;
+/// expired rows are reaped by the daily sweep cron.
+model RateLimitBucket {
+  key       String   @id
+  count     Int      @default(0)
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
+
+  @@index([resetAt])
+  @@map("rate_limit_buckets")
+}
+
 model LoginEvent {
   id        String   @id @default(uuid())
   userId    String?

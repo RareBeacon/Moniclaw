@@ -134,6 +134,9 @@ export const AUDIT_ACTIONS = {
   agentTeamUpdate: "agents.team.update",
   agentTeamDelete: "agents.team.delete",
   agentTeamRun: "agents.team.run",
+
+  // Governance (Phase 9)
+  auditExport: "audit.export",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

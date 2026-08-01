@@ -31,7 +31,7 @@ export async function inviteMember(
   const denied = checkPermission(ctx, "members.invite");
   if (denied) return { error: denied };
 
-  const gate = rateLimit(
+  const gate = await rateLimit(
     `invite:${ctx.workspace.id}`,
     RATE_LIMITS.invite.limit,
     RATE_LIMITS.invite.windowMs

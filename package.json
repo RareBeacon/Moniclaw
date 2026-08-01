@@ -26,7 +26,8 @@
     "test:sales": "tsx scripts/sales-e2e-test.mts",
     "test:routes": "tsx scripts/dashboard-routes-test.mts",
     "test:flows": "tsx scripts/auth-email-flows-test.mts",
-    "test:ai": "tsx scripts/ai-api-e2e-test.mts"
+    "test:ai": "tsx scripts/ai-api-e2e-test.mts",
+    "test:governance": "tsx scripts/governance-e2e-test.mts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",

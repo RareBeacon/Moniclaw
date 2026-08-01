@@ -33,7 +33,8 @@ export type RateLimitResult =
   | { success: true; remaining: number }
   | { success: false; retryAfterSeconds: number };
 
-export function rateLimit(
+/** In-memory sliding-window limiter — the unit-test store + fallback path. */
+export function rateLimitMemory(
   key: string,
   limit: number,
   windowMs: number
@@ -54,6 +55,48 @@ export function rateLimit(
   window.push(now);
   store.set(key, window);
   return { success: true, remaining: limit - window.length };
+}
+
+// ── Phase 9 · Durable store (shared across serverless instances) ─────────
+//
+// Fixed-window counters in Postgres, one atomic upsert per hit — two racing
+// instances both increment the SAME row, so distributed traffic trips the
+// limit deterministically (in-memory counters never could). On any store
+// failure we fail over to the in-memory limiter and warn — a rate limiter
+// is a safety valve, never a reason to take the platform down.
+import { db } from "@/lib/db";
+
+export async function rateLimit(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<RateLimitResult> {
+  try {
+    const resetAt = new Date(Date.now() + windowMs);
+    const rows = await db.$queryRaw<Array<{ count: number; resetAt: Date }>>`
+      INSERT INTO "rate_limit_buckets" ("key", "count", "resetAt", "updatedAt")
+      VALUES (${key}, 1, ${resetAt}, now())
+      ON CONFLICT ("key") DO UPDATE SET
+        "count"     = CASE WHEN "rate_limit_buckets"."resetAt" <= now() THEN 1
+                           ELSE "rate_limit_buckets"."count" + 1 END,
+        "resetAt"   = CASE WHEN "rate_limit_buckets"."resetAt" <= now() THEN EXCLUDED."resetAt"
+                           ELSE "rate_limit_buckets"."resetAt" END,
+        "updatedAt" = now()
+      RETURNING "count", "resetAt"
+    `;
+    const row = rows[0];
+    if (!row) throw new Error("rate-limit upsert returned no row");
+    if (row.count > limit) {
+      return {
+        success: false,
+        retryAfterSeconds: Math.max(1, Math.ceil((row.resetAt.getTime() - Date.now()) / 1000)),
+      };
+    }
+    return { success: true, remaining: Math.max(0, limit - row.count) };
+  } catch (err) {
+    console.warn(`[rate-limit] durable store unavailable (${(err as Error).message.slice(0, 80)}) — in-memory fallback`);
+    return rateLimitMemory(key, limit, windowMs);
+  }
 }
 
 /** Test hook: clear all buckets. Not used by application code. */

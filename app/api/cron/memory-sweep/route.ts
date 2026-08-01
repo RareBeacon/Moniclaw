@@ -50,12 +50,25 @@ export async function GET(request: Request) {
     }
   }
 
+  // Durable rate-limit buckets (Phase 9): rows whose window closed are dead
+  // weight — reap anything expired for more than a day. Platform-global, so a
+  // failure here must surface as a failure without blocking the workspace sweeps.
+  let rateLimitBucketsReaped = 0;
+  try {
+    rateLimitBucketsReaped = await db.$executeRaw`
+      DELETE FROM "rate_limit_buckets" WHERE "resetAt" < now() - interval '1 day'
+    `;
+  } catch (err) {
+    failures.push({ workspaceId: "platform", error: (err as Error).message.slice(0, 200) });
+  }
+
   return Response.json({
     ok: failures.length === 0,
     data: {
       expiredRemoved: expired,
       trimmed,
       workspaces: workspaces.length,
+      rateLimitBucketsReaped,
       failures: failures.slice(0, 5),
     },
   });

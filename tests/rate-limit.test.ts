@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   __resetRateLimitStore,
-  rateLimit,
+  rateLimitMemory,
   RATE_LIMITS,
 } from "../lib/rate-limit";
 
@@ -12,11 +12,11 @@ test("allows up to the limit then blocks with retry timing", () => {
   const key = "test:basic";
 
   for (let i = 0; i < 3; i++) {
-    const result = rateLimit(key, 3, 60_000);
+    const result = rateLimitMemory(key, 3, 60_000);
     assert.equal(result.success, true);
   }
 
-  const blocked = rateLimit(key, 3, 60_000);
+  const blocked = rateLimitMemory(key, 3, 60_000);
   assert.equal(blocked.success, false);
   if (!blocked.success) {
     assert.ok(blocked.retryAfterSeconds >= 1);
@@ -26,18 +26,18 @@ test("allows up to the limit then blocks with retry timing", () => {
 
 test("separate keys have independent buckets", () => {
   __resetRateLimitStore();
-  for (let i = 0; i < 2; i++) rateLimit("test:a", 2, 60_000);
-  assert.equal(rateLimit("test:a", 2, 60_000).success, false);
-  assert.equal(rateLimit("test:b", 2, 60_000).success, true);
+  for (let i = 0; i < 2; i++) rateLimitMemory("test:a", 2, 60_000);
+  assert.equal(rateLimitMemory("test:a", 2, 60_000).success, false);
+  assert.equal(rateLimitMemory("test:b", 2, 60_000).success, true);
 });
 
 test("token window slides: oldest hit expires first", async () => {
   __resetRateLimitStore();
   const key = "test:slide";
-  assert.equal(rateLimit(key, 1, 120).success, true);
-  assert.equal(rateLimit(key, 1, 120).success, false);
+  assert.equal(rateLimitMemory(key, 1, 120).success, true);
+  assert.equal(rateLimitMemory(key, 1, 120).success, false);
   await new Promise((resolve) => setTimeout(resolve, 180));
-  assert.equal(rateLimit(key, 1, 120).success, true);
+  assert.equal(rateLimitMemory(key, 1, 120).success, true);
 });
 
 test("named policies are sane", () => {

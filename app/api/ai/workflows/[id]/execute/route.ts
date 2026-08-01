@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     const guard = requirePrincipal(principal, "ai.workflows.run");
     if (guard) return guard;
 
-    const gate = rateLimit(
+    const gate = await rateLimit(
       `aiWorkflowRun:${principal!.workspace.id}`,
       RATE_LIMITS.aiWorkflowRun.limit,
       RATE_LIMITS.aiWorkflowRun.windowMs

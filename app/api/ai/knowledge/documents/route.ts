@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     const guard = requirePrincipal(principal, "knowledge.write");
     if (guard) return guard;
 
-    const gate = rateLimit(
+    const gate = await rateLimit(
       `aiUpload:${principal!.workspace.id}`,
       RATE_LIMITS.aiUpload.limit,
       RATE_LIMITS.aiUpload.windowMs

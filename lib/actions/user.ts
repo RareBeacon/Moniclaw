@@ -152,7 +152,7 @@ export async function updateAvatar(
   const user = await getCurrentUser();
   if (!user) return { error: "Not authenticated." };
 
-  const gate = rateLimit(`upload:${user.id}`, RATE_LIMITS.upload.limit, RATE_LIMITS.upload.windowMs);
+  const gate = await rateLimit(`upload:${user.id}`, RATE_LIMITS.upload.limit, RATE_LIMITS.upload.windowMs);
   if (!gate.success) {
     return { error: `Upload rate limit reached. Try again in ${gate.retryAfterSeconds}s.` };
   }

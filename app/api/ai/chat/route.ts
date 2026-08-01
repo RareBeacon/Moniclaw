@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     const guard = requirePrincipal(principal, "ai.chat");
     if (guard) return guard;
 
-    const gate = rateLimit(
+    const gate = await rateLimit(
       `aiChat:${principal!.userId ?? principal!.workspace.id}`,
       RATE_LIMITS.aiChat.limit,
       RATE_LIMITS.aiChat.windowMs

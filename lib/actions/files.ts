@@ -28,7 +28,7 @@ export async function generateUsageExport(): Promise<FilesActionState> {
   const denied = checkPermission(ctx, "files.export");
   if (denied) return { error: denied };
 
-  const gate = rateLimit(
+  const gate = await rateLimit(
     `export:${ctx.workspace.id}`,
     RATE_LIMITS.export.limit,
     RATE_LIMITS.export.windowMs

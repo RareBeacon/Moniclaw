@@ -83,7 +83,7 @@ export async function authenticate(
 
   const ip = clientIp() ?? "unknown";
   const key = `login:${ip}:${parsed.data.email}`;
-  const gate = rateLimit(key, RATE_LIMITS.login.limit, RATE_LIMITS.login.windowMs);
+  const gate = await rateLimit(key, RATE_LIMITS.login.limit, RATE_LIMITS.login.windowMs);
   if (!gate.success) {
     return {
       error: `Too many sign-in attempts. Try again in ${gate.retryAfterSeconds}s.`,
@@ -120,7 +120,7 @@ export async function register(
   formData: FormData
 ): Promise<AuthFormState> {
   const ip = clientIp() ?? "unknown";
-  const gate = rateLimit(`register:${ip}`, RATE_LIMITS.register.limit, RATE_LIMITS.register.windowMs);
+  const gate = await rateLimit(`register:${ip}`, RATE_LIMITS.register.limit, RATE_LIMITS.register.windowMs);
   if (!gate.success) {
     return { error: `Too many accounts created from this network. Try again in ${gate.retryAfterSeconds}s.` };
   }
@@ -135,6 +135,20 @@ export async function register(
     const provided = String(formData.get("accessCode") ?? "").trim();
     if (!provided || !safeEqual(provided, requiredCode)) {
       return { error: "MoniClaw is in private launch — enter the access code you were given." };
+    }
+  }
+
+  // Private-launch seat cap (Phase 9 — capacity for the first N accounts).
+  // Fail closed and honest: when the platform is full, say so up front
+  // instead of taking the account and silently degrading later.
+  // Unset / non-positive = uncapped (development default).
+  const maxUsers = Number(process.env.AUTH_REGISTRATION_MAX_USERS ?? "");
+  if (Number.isInteger(maxUsers) && maxUsers > 0) {
+    const seatsTaken = await db.user.count();
+    if (seatsTaken >= maxUsers) {
+      return {
+        error: `MoniClaw is at capacity — all ${maxUsers} launch seats are taken. Contact the workspace owner to free a seat or raise the limit.`,
+      };
     }
   }
 
@@ -189,7 +203,7 @@ export async function resendVerification(email: string): Promise<AuthFormState> 
   if (!parsed.success) return { error: "Enter a valid email address." };
 
   const ip = clientIp() ?? "unknown";
-  const gate = rateLimit(
+  const gate = await rateLimit(
     `resend:${ip}:${parsed.data}`,
     RATE_LIMITS.resendVerify.limit,
     RATE_LIMITS.resendVerify.windowMs
@@ -235,7 +249,7 @@ export async function requestPasswordReset(
   if (!parsed.success) return { error: "Enter the email you registered with." };
 
   const ip = clientIp() ?? "unknown";
-  const gate = rateLimit(
+  const gate = await rateLimit(
     `reset:${ip}:${parsed.data}`,
     RATE_LIMITS.reset.limit,
     RATE_LIMITS.reset.windowMs

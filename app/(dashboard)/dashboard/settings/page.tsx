@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronRight, KeyRound, Plug } from "lucide-react";
+import { ChevronRight, FileDown, KeyRound, Plug, Users } from "lucide-react";
 
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { getCurrentUser, getPrimaryWorkspace } from "@/lib/workspace";
 import { formatDateTime } from "@/lib/format";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { DeleteWorkspaceForm, WorkspaceSettingsForm } from "@/components/dashboard/settings-forms";
 
 export const metadata: Metadata = {
@@ -28,6 +30,17 @@ export default async function SettingsPage() {
 
   const canEdit = can(role, "settings.edit");
   const isOwner = role === "OWNER";
+  const canAudit = can(role, "audit.read");
+
+  // Phase 9 — launch capacity: platform-wide seats vs the configured cap,
+  // plus this workspace's headcount. Counts only, no personal data.
+  const [seatsTaken, memberCount] = await Promise.all([
+    db.user.count(),
+    db.membership.count({ where: { workspaceId: workspace.id } }),
+  ]);
+  const rawCap = Number(process.env.AUTH_REGISTRATION_MAX_USERS ?? "");
+  const seatCap = Number.isInteger(rawCap) && rawCap > 0 ? rawCap : null;
+  const seatPct = seatCap ? Math.min(100, Math.round((seatsTaken / seatCap) * 100)) : null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -99,6 +112,70 @@ export default async function SettingsPage() {
           </ul>
         )}
       </section>
+
+      <section className="rounded-2xl border bg-card p-6 sm:p-7" aria-label="Access and launch seats">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <Users className="h-4 w-4 text-primary" aria-hidden />
+          Access &amp; launch seats
+        </h2>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <div>
+            <p className="text-2xl font-semibold tabular-nums">
+              {seatsTaken}
+              {seatCap ? <span className="text-base font-normal text-muted-foreground"> / {seatCap}</span> : null}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Platform accounts{seatCap ? "" : " (uncapped)"}</p>
+          </div>
+          <div>
+            <p className="text-2xl font-semibold tabular-nums">{memberCount}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Members in this workspace</p>
+          </div>
+          <div>
+            <p className="text-2xl font-semibold tabular-nums">
+              {process.env.AUTH_REGISTRATION_CODE ? "Code-gated" : "Open"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Registration mode</p>
+          </div>
+        </div>
+        {seatPct !== null && (
+          <div className="mt-4">
+            <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={seatPct} aria-valuemin={0} aria-valuemax={100} aria-label="Launch seats taken">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-[width] duration-500",
+                  seatPct >= 90 ? "bg-destructive" : seatPct >= 70 ? "bg-amber-500" : "bg-primary"
+                )}
+                style={{ width: `${seatPct}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {seatCap! - seatsTaken} of {seatCap} launch seats remain. Registration closes automatically when the cap is reached.
+            </p>
+          </div>
+        )}
+      </section>
+
+      {canAudit && (
+        <section className="rounded-2xl border bg-card p-6 sm:p-7" aria-label="Audit log export">
+          <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <FileDown className="h-4 w-4 text-primary" aria-hidden />
+            Audit log
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            Download this workspace&rsquo;s full audit ledger as NDJSON — one event per
+            line, chronological, ready for your compliance tooling. Exports are
+            themselves audited and limited to 12 per hour.
+          </p>
+          <a
+            href="/api/audit-logs/export"
+            download
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4 inline-flex")}
+          >
+            <FileDown className="mr-2 h-4 w-4" aria-hidden />
+            Download audit ledger (.ndjson)
+          </a>
+        </section>
+      )}
 
       {isOwner && <DeleteWorkspaceForm slug={workspace.slug} />}
     </div>
