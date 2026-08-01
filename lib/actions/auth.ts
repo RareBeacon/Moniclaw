@@ -9,6 +9,7 @@ import { signIn } from "@/auth";
 import { db } from "@/lib/db";
 import { clientIp } from "@/lib/http";
 import { audit } from "@/lib/audit";
+import { safeEqual } from "@/lib/crypto";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import {
   sendPasswordResetEmail,
@@ -122,6 +123,19 @@ export async function register(
   const gate = rateLimit(`register:${ip}`, RATE_LIMITS.register.limit, RATE_LIMITS.register.windowMs);
   if (!gate.success) {
     return { error: `Too many accounts created from this network. Try again in ${gate.retryAfterSeconds}s.` };
+  }
+
+  // Private-launch gate (Phase-6 release: "only us"). When
+  // AUTH_REGISTRATION_CODE is configured, every new account must present the
+  // shared access code — constant-time compared, checked before ANY work so
+  // nothing about existing accounts is observable. Leave unset for open
+  // registration (development default).
+  const requiredCode = process.env.AUTH_REGISTRATION_CODE;
+  if (requiredCode) {
+    const provided = String(formData.get("accessCode") ?? "").trim();
+    if (!provided || !safeEqual(provided, requiredCode)) {
+      return { error: "MoniClaw is in private launch — enter the access code you were given." };
+    }
   }
 
   const parsed = registerSchema.safeParse({

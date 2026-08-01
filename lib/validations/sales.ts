@@ -186,3 +186,78 @@ export const salesSettingsApiSchema = z.object({
   senderName: z.string().trim().max(120).nullish(),
   senderTitle: z.string().trim().max(120).nullish(),
 });
+
+// ── Email connections (Phase 6 — outbound identities) ─────────────────────
+
+/** All AWS regions that expose an SES SMTP endpoint. */
+export const SES_REGIONS = [
+  "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+  "af-south-1", "ap-south-1", "ap-south-2", "ap-southeast-1", "ap-southeast-2",
+  "ap-southeast-3", "ap-southeast-4", "ap-northeast-1", "ap-northeast-2",
+  "ap-northeast-3", "ca-central-1", "ca-west-1", "eu-central-1", "eu-central-2",
+  "eu-west-1", "eu-west-2", "eu-west-3", "eu-south-1", "eu-south-2",
+  "eu-north-1", "il-central-1", "me-south-1", "me-central-1", "sa-east-1",
+  "us-gov-east-1", "us-gov-west-1",
+] as const;
+
+export function sesSmtpHost(region: string): string {
+  return `email-smtp.${region}.amazonaws.com`;
+}
+
+const smtpHostSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(253)
+  .regex(/^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/, "Enter a valid hostname (dots and dashes allowed).")
+  .refine((h) => !h.includes(".."), "Enter a valid hostname.");
+
+const emailConnectionBase = z.object({
+  provider: z.enum(["SMTP", "AMAZON_SES"]).default("SMTP"),
+  label: z.string().trim().min(2).max(80),
+  senderName: z.string().trim().max(120).nullish(),
+  senderEmail: z.string().trim().email().max(254).transform((v) => v.toLowerCase()),
+  smtpHost: smtpHostSchema,
+  smtpPort: z.number().int().min(1).max(65535),
+  smtpSecure: z.boolean().default(false),
+  smtpUsername: z.string().trim().max(253).nullish(),
+  password: z.string().min(1).max(256).nullish(), // write-only; AES-256-GCM at rest
+  region: z.enum(SES_REGIONS).nullish(),
+  isDefault: z.boolean().default(false),
+});
+
+export const emailConnectionCreateApiSchema = emailConnectionBase.superRefine((v, ctx) => {
+  if (v.provider === "AMAZON_SES") {
+    const region = v.region ?? "";
+    if (!region) {
+      ctx.addIssue({ code: "custom", path: ["region"], message: "Pick your SES region." });
+      return;
+    }
+    if (!v.smtpUsername || !v.password) {
+      ctx.addIssue({ code: "custom", path: ["password"], message: "SES requires its SMTP username and password." });
+    }
+  }
+});
+
+export const emailConnectionUpdateApiSchema = z.object({
+  label: z.string().trim().min(2).max(80).optional(),
+  senderName: z.string().trim().max(120).nullish(),
+  smtpHost: smtpHostSchema.optional(),
+  smtpPort: z.number().int().min(1).max(65535).optional(),
+  smtpSecure: z.boolean().optional(),
+  smtpUsername: z.string().trim().max(253).nullish(),
+  password: z.string().min(1).max(256).nullish(), // omitted = keep; null = clear
+  region: z.enum(SES_REGIONS).nullish(),
+  isDefault: z.boolean().optional(),
+});
+
+export const emailConnectionVerifyApiSchema = z.object({
+  testTo: z.string().trim().email().max(254).optional(), // when set, a real test email is delivered
+});
+
+export const draftSendApiSchema = z.object({
+  connectionId: z.string().uuid().optional(), // defaults to the workspace default connection
+});
+
+export type EmailConnectionCreateInput = z.infer<typeof emailConnectionCreateApiSchema>;
+export type EmailConnectionUpdateInput = z.infer<typeof emailConnectionUpdateApiSchema>;

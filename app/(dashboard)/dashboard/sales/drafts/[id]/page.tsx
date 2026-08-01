@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { formatRelative } from "@/lib/format";
 import { salesPageContext, salesRepos } from "@/lib/sales/page-data";
 import { DraftEditor } from "@/components/dashboard/sales/controls";
+import { SendDraftNowButton } from "@/components/dashboard/sales/email-connections";
 
 export const metadata: Metadata = { title: "Sales · Draft", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
@@ -18,10 +19,11 @@ export default async function DraftDetailPage({ params }: { params: Promise<{ id
   const draft = await repos.drafts.get(ctx.workspace.id, id);
   if (!draft) notFound();
 
-  const [contact, company, approval] = await Promise.all([
+  const [contact, company, approval, emailConnections] = await Promise.all([
     draft.contactId ? repos.contacts.get(ctx.workspace.id, draft.contactId) : null,
     draft.companyId ? repos.companies.get(ctx.workspace.id, draft.companyId) : null,
     draft.approvalId ? db.approval.findUnique({ where: { id: draft.approvalId }, include: { decidedBy: { select: { name: true, email: true } } } }) : null,
+    db.emailConnection.count({ where: { workspaceId: ctx.workspace.id } }),
   ]);
   const personalization = (draft.personalization ?? {}) as { warnings?: string[]; playbook?: Array<{ title: string }>; campaign?: { name: string } };
 
@@ -74,6 +76,48 @@ export default async function DraftDetailPage({ params }: { params: Promise<{ id
           canReview={ctx.canReviewDrafts}
         />
       </div>
+
+      {draft.channel === "EMAIL" && (
+        <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+          <p className="text-sm font-semibold">Delivery</p>
+          {draft.status === "SENT" ? (
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">
+              ✓ Sent {draft.sentAt ? formatRelative(new Date(draft.sentAt)) : ""}
+              {draft.providerMessageId ? ` · provider id ${String(draft.providerMessageId).slice(0, 60)}` : ""}
+            </p>
+          ) : emailConnections === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No email connection yet — approved drafts wait here until you{" "}
+              <Link href="/dashboard/sales/settings" className="text-primary hover:underline">
+                connect Amazon SES or an SMTP account
+              </Link>
+              .
+            </p>
+          ) : (draft.status === "APPROVED" || draft.status === "SCHEDULED" || draft.status === "FAILED") && ctx.canReviewDrafts ? (
+            <div className="space-y-2">
+              {draft.sendError && (
+                <p className="text-xs text-red-600 dark:text-red-400">Last attempt failed: {draft.sendError}</p>
+              )}
+              <SendDraftNowButton
+                draftId={draft.id}
+                disabled={draft.status === "APPROVED" && !draft.scheduledAt && false}
+              />
+              <p className="text-xs text-muted-foreground">
+                Sends from your connected identity{draft.scheduledAt ? ` · scheduled ${new Date(draft.scheduledAt).toLocaleString()}` : ""}
+                {draft.sendAttempts > 0 ? ` · attempts ${draft.sendAttempts}` : ""}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {draft.status === "SENDING"
+                ? "A send is in progress…"
+                : draft.status === "PENDING_REVIEW"
+                  ? "Pending human review — nothing sends until a manager approves this draft."
+                  : `Status ${draft.status.toLowerCase().replace("_", " ")}.`}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -249,10 +249,22 @@ export class KnowledgeService {
     const limit = input.limit ?? 6;
     const embedder = this.embedder(input.workspaceId);
     if (!embedder) return [];
-    const response = await embedder.embed({
-      texts: [input.query],
-      taskType: "RETRIEVAL_QUERY",
-    });
+    // Contract: search degrades to an HONEST EMPTY result when embeddings
+    // are unavailable (chat-only provider, e.g. OpenRouter free tier),
+    // instead of failing the caller's whole operation (research runs,
+    // campaign drafts, chat tool calls).
+    let response: Awaited<ReturnType<typeof embedder.embed>>;
+    try {
+      response = await embedder.embed({
+        texts: [input.query],
+        taskType: "RETRIEVAL_QUERY",
+      });
+    } catch (err) {
+      console.warn(
+        `[knowledge] search degraded: embeddings unavailable — ${(err as Error).message.slice(0, 120)}`
+      );
+      return [];
+    }
     const vector = response.vectors[0];
     if (!vector?.length) return [];
 

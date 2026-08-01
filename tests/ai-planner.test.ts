@@ -80,6 +80,21 @@ test("valid plans execute tool steps and finish with a reflection", async () => 
   assert.equal(router.calls.length, 2);
 });
 
+test("a bare steps-array decomposition is normalized (model drift tolerance)", async () => {
+  // OpenRouter free-tier models emit [ {description...} ] with no wrapper.
+  const arrayRoot = JSON.stringify([
+    { description: "Compute the quarterly delta.", tool: "calculator", input: { expression: "(220-180)/4" } },
+    { description: "Summarize the finding for the operator." },
+  ]);
+  const { planner } = makeHarness([
+    arrayRoot,
+    "Outcome: computed 10. Evidence: calculator returned {\"value\":10}. Next: none.",
+  ]);
+  const result = await planner.run(CTX, "Quarterly delta");
+  assert.equal(result.status, "completed");
+  assert.equal(result.trace.length, 2);
+});
+
 test("requiresApproval pauses the run through the gate", async () => {
   const plan = JSON.stringify({
     steps: [

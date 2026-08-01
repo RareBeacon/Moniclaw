@@ -52,7 +52,10 @@ export const PROVIDER_CATALOG: readonly ProviderMeta[] = [
     label: "OpenRouter (free models)",
     requiresKey: true,
     defaultBaseUrl: "https://openrouter.ai/api/v1",
-    defaultModel: "meta-llama/llama-3.3-70b-instruct:free",
+    // Supplier changes over time on the free tier — verified working with
+    // JSON-mode planning + tool calling + 262k ctx (2026-08). Workspaces can
+    // pin any model id via their provider config's defaultModel.
+    defaultModel: "google/gemma-4-26b-a4b-it:free",
     freeTier: true,
     status: "shipped",
   },

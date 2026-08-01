@@ -122,6 +122,25 @@ export function profileFromReport(report: ResearchReportLike): CompanyProfile {
     return value || undefined;
   };
 
+  // Model prose routinely exceeds the CRM's tight field caps (industry ≤80,
+  // size ≤20, geography ≤120 chars). Fit at word boundaries — lossy sizing
+  // for narrow fields, invention never allowed; the full text survives in
+  // `summary`.
+  const fit = (value: string | undefined, max: number): string | undefined => {
+    if (!value) return undefined;
+    if (value.length <= max) return value;
+    const cut = value.slice(0, max);
+    const lastSpace = cut.lastIndexOf(" ");
+    let fitted = (lastSpace > max * 0.5 ? cut.slice(0, lastSpace) : cut).trim().replace(/[,;:.—-]+$/, "");
+    // Never leave a dangling article/preposition ("The group is a" is noise,
+    // not information) — honest absence beats a mangled value in narrow fields.
+    fitted = fitted.replace(/\s+(a|an|the|of|is|are|in|on|at|and|or|with|across)$/i, "").trim();
+    if (!fitted || (fitted.length < Math.min(max, 12) && fitted.length < value.length * 0.3 && max <= 20)) {
+      return undefined;
+    }
+    return fitted || undefined;
+  };
+
   const techBody = bodyFor(sections, SECTION_KEYS.find((k) => k.field === "techStack")!.headings);
   const techStack = techBody
     ? bulletList(techBody).flatMap((line) => line.split(/,|·/).map((s) => s.trim()).filter(Boolean)).slice(0, 30)
@@ -132,12 +151,12 @@ export function profileFromReport(report: ResearchReportLike): CompanyProfile {
 
   return companyProfileSchema.parse({
     summary: report.summary.slice(0, 4000),
-    industry: scalar("industry"),
-    size: scalar("size"),
-    geography: scalar("geography"),
-    businessModel: scalar("businessModel")?.slice(0, 400),
-    productsServices: scalar("productsServices")?.slice(0, 1000),
-    targetMarket: scalar("targetMarket")?.slice(0, 400),
+    industry: fit(scalar("industry"), 80),
+    size: fit(scalar("size"), 20),
+    geography: fit(scalar("geography"), 120),
+    businessModel: fit(scalar("businessModel"), 400),
+    productsServices: fit(scalar("productsServices"), 1000),
+    targetMarket: fit(scalar("targetMarket"), 400),
     techStack: techStack?.length ? techStack : undefined,
     socialLinks: socialLinks.length ? socialLinks : undefined,
     sources: (report.citations ?? [])

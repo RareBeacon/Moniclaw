@@ -15,7 +15,19 @@ import {
   submitDraftForReview,
 } from "@/lib/sales/drafts";
 import { SalesError } from "@sales/index";
-import { companyUpdateApiSchema, contactUpdateApiSchema } from "@/lib/validations/sales";
+import {
+  companyUpdateApiSchema,
+  contactUpdateApiSchema,
+  emailConnectionCreateApiSchema,
+  emailConnectionUpdateApiSchema,
+} from "@/lib/validations/sales";
+import {
+  createConnection,
+  deleteConnection,
+  sendDraft,
+  updateConnection,
+  verifyConnection,
+} from "@/lib/email/connections";
 import {
   activityInputSchema,
   campaignInputSchema,
@@ -570,5 +582,84 @@ export async function deleteSearchAction(id: string): Promise<ActionState> {
     return { ok: true };
   } catch (err) {
     return salesError(err, "Could not delete the saved search.");
+  }
+}
+
+// ── Email connections (SES/SMTP) + approved-draft delivery ────────────────
+
+export async function createEmailConnectionAction(input: unknown): Promise<ActionState> {
+  const g = await context("sales.settings.manage");
+  if ("error" in g) return { error: g.error };
+  const gate = rateLimit(`salesEmailConnection:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailConnection.limit, RATE_LIMITS.salesEmailConnection.windowMs);
+  if (!gate.success) return { error: `Too many connection changes. Try again in ${gate.retryAfterSeconds}s.` };
+  try {
+    const parsed = emailConnectionCreateApiSchema.parse(input);
+    const connection = await createConnection(g.ctx.workspace.id, g.ctx.user.id, parsed);
+    revalidateSales();
+    return { ok: true };
+  } catch (err) {
+    return salesError(err, "Could not connect the email identity.");
+  }
+}
+
+export async function updateEmailConnectionAction(id: string, input: unknown): Promise<ActionState> {
+  const g = await context("sales.settings.manage");
+  if ("error" in g) return { error: g.error };
+  const gate = rateLimit(`salesEmailConnection:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailConnection.limit, RATE_LIMITS.salesEmailConnection.windowMs);
+  if (!gate.success) return { error: `Too many connection changes. Try again in ${gate.retryAfterSeconds}s.` };
+  try {
+    const parsed = emailConnectionUpdateApiSchema.parse(input);
+    await updateConnection(g.ctx.workspace.id, g.ctx.user.id, id, parsed);
+    revalidateSales();
+    return { ok: true };
+  } catch (err) {
+    return salesError(err, "Could not update the connection.");
+  }
+}
+
+export async function deleteEmailConnectionAction(id: string): Promise<ActionState> {
+  const g = await context("sales.settings.manage");
+  if ("error" in g) return { error: g.error };
+  try {
+    await deleteConnection(g.ctx.workspace.id, g.ctx.user.id, id);
+    revalidateSales();
+    return { ok: true };
+  } catch (err) {
+    return salesError(err, "Could not remove the connection.");
+  }
+}
+
+export async function verifyEmailConnectionAction(id: string, testTo?: string): Promise<ActionState> {
+  const g = await context("sales.settings.manage");
+  if ("error" in g) return { error: g.error };
+  const gate = rateLimit(`salesEmailVerify:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailVerify.limit, RATE_LIMITS.salesEmailVerify.windowMs);
+  if (!gate.success) return { error: `Too many verification attempts. Try again in ${gate.retryAfterSeconds}s.` };
+  try {
+    const result = await verifyConnection(g.ctx.workspace.id, g.ctx.user.id, id, {
+      ...(testTo ? { testTo } : {}),
+    });
+    revalidateSales();
+    return result.status === "VERIFIED"
+      ? { ok: true }
+      : { error: `Verification failed: ${result.error ?? "handshake refused"}` };
+  } catch (err) {
+    return salesError(err, "Could not verify the connection.");
+  }
+}
+
+/** Manager decision: deliver an APPROVED draft immediately. */
+export async function sendDraftNowAction(id: string): Promise<ActionState> {
+  const g = await context("sales.drafts.review");
+  if ("error" in g) return { error: g.error };
+  const gate = rateLimit(`salesEmailSend:${g.ctx.workspace.id}`, RATE_LIMITS.salesEmailSend.limit, RATE_LIMITS.salesEmailSend.windowMs);
+  if (!gate.success) return { error: `Too many sends. Try again in ${gate.retryAfterSeconds}s.` };
+  try {
+    const result = await sendDraft(g.ctx.workspace.id, g.ctx.user.id, id);
+    revalidateSales();
+    return result.status === "SENT"
+      ? { ok: true }
+      : { error: `Not delivered: ${result.error ?? "provider refused"}${result.status === "SCHEDULED" ? " — rescheduled for the next tick." : ""}` };
+  } catch (err) {
+    return salesError(err, "Could not send the draft.");
   }
 }

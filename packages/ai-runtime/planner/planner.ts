@@ -220,30 +220,59 @@ export class Planner {
     goal: string,
     availableTools: string[]
   ): Promise<Plan> {
-    const response = await this.router.chat(ctx, {
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a planning engine. Decompose the user's goal into 1-12 concrete steps. " +
-            "Use tools ONLY from this allowlist (omit `tool` for reasoning steps): " +
-            `${availableTools.join(", ") || "(none available)"}. ` +
+    const messages = [
+      {
+        role: "system" as const,
+        content:
+          "You are a planning engine. Decompose the user's goal into 1-12 concrete steps. " +
+          "Use tools ONLY from this allowlist (omit `tool` for reasoning steps): " +
+          `${availableTools.join(", ") || "(none available)"}. ` +
             "Mark requiresApproval=true for steps with external side effects " +
-            "(sending, deleting, purchasing, publishing). Output ONLY the JSON plan.",
-        },
-        { role: "user", content: goal },
-      ],
+            "(sending, deleting, purchasing, publishing). " +
+            "Keep `reasoning` to ONE short sentence (or omit it); keep step descriptions under 15 words. " +
+            "Output ONLY the JSON plan as an object with this exact shape: " +
+            '{"reasoning"?: "why these steps", "steps": [{"description": "what this step does", "tool"?: "registry_tool_name", "input"?: {...}, "requiresApproval"?: true|false}]}.',
+      },
+      { role: "user" as const, content: goal },
+    ];
+    const response = await this.router.chat(ctx, {
+      messages,
       jsonMode: true,
       temperature: 0.2,
-      maxTokens: 1500,
+      // Plans with 5-12 tool steps can exceed 1.5k tokens on open models;
+      // a truncated plan is a hard failure, so decompose gets headroom.
+      maxTokens: 4000,
       requestId: ctx.requestId,
     });
+    let content = response.content;
     let raw: unknown;
     try {
-      raw = JSON.parse(response.content);
+      raw = JSON.parse(content);
     } catch {
-      throw new Error(`Planner received non-JSON decomposition: ${response.content.slice(0, 200)}`);
+      // Supplier/output-cap truncation (common on rate-limited free tiers):
+      // one compact retry asking for a terse plan. Honest failure follows if
+      // the retry also yields invalid JSON.
+      const retry = await this.router.chat(ctx, {
+        messages: [
+          messages[0]!,
+          { role: "user", content: `${goal}\n\nReturn ONLY the compact JSON plan now — NO reasoning field, shortest valid plan.` },
+        ],
+        jsonMode: true,
+        temperature: 0.0,
+        maxTokens: 4000,
+        requestId: ctx.requestId,
+      });
+      content = retry.content;
+      try {
+        raw = JSON.parse(content);
+      } catch {
+        throw new Error(`Planner received non-JSON decomposition: ${content.slice(0, 200)}`);
+      }
     }
+    // Tolerance: some models emit a bare steps array despite the wrapper
+    // contract (observed on OpenRouter free-tier models) — normalize it rather
+    // than fail a plan that is otherwise perfectly valid.
+    if (Array.isArray(raw)) raw = { steps: raw };
     const parsed = planSchema.safeParse(raw);
     if (!parsed.success) {
       throw new Error(
@@ -284,7 +313,7 @@ export class Planner {
       ],
       jsonMode: true,
       temperature: 0.1,
-      maxTokens: 600,
+      maxTokens: 1200,
       requestId: ctx.requestId,
     });
     try {

@@ -1,6 +1,7 @@
 import { audit } from "@/lib/audit";
 import { getAgentRuntime } from "@/lib/agents/runtime";
 import { getSalesRuntime } from "@/lib/sales/runtime";
+import { sendDueDrafts } from "@/lib/email/connections";
 import { errorResponse, fail, ok } from "@/lib/agents/api";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +45,22 @@ export async function POST(request: Request) {
       campaigns = { error: err instanceof Error ? err.message : "failed" };
     }
 
-    return ok({ ...result, campaigns });
+    // Phase 6 (email): deliver human-approved, due SCHEDULED drafts through
+    // the workspace's connected identity (SES/SMTP). Only drafts a manager
+    // APPROVED and SCHEDULED ever reach this path — nothing auto-sends.
+    let email: unknown = { skipped: true };
+    try {
+      const emailResult = await sendDueDrafts();
+      email = emailResult;
+      if (emailResult.processed > 0) {
+        await audit({ action: "sales.email.tick", metadata: emailResult as unknown as Record<string, unknown> });
+      }
+    } catch (err) {
+      console.error("[tick] email dispatch failed:", err);
+      email = { error: err instanceof Error ? err.message : "failed" };
+    }
+
+    return ok({ ...result, campaigns, email });
   } catch (err) {
     return errorResponse(err);
   }

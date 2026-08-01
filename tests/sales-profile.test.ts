@@ -108,3 +108,28 @@ test("summary is capped at the schema limit", () => {
   const p = profileFromReport({ summary: long, markdown: "", citations: [] });
   assert.equal(p.summary.length, 4000);
 });
+
+test("profile: prose beyond CRM field caps is fit at word boundaries, never rejected", async () => {
+  const report = {
+    ...REPORT,
+    markdown: [
+      "## Industry",
+      "Acme operates primarily in the maritime transport and intermodal container logistics industry across EMEA routes.",
+      "",
+      "## Company size",
+      "The group is a large-scale global enterprise employing tens of thousands of people worldwide.",
+      "",
+      "## Geography",
+      "Headquartered in Marseille, France, with operations spanning Europe, Africa, Asia-Pacific and the Americas.",
+      "",
+      "## Contact pages",
+      "https://acme.example/contact",
+      "",
+    ].join("\n"),
+  };
+  const profile = profileFromReport(report as never);
+  assert.ok((profile.industry?.length ?? 99) <= 80, `industry fits (${profile.industry})`);
+  assert.ok((profile.size?.length ?? 99) <= 20, `size fits (${profile.size})`);
+  assert.ok((profile.geography?.length ?? 99) <= 120, `geography fits (${profile.geography})`);
+  assert.match(profile.industry ?? "", /transport|maritime/i);
+});

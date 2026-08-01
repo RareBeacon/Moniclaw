@@ -76,6 +76,8 @@ export interface SalesDraftRow {
   providerMessageId: string | null; deliveryStatus: string;
   approvalId: string | null; agentRunId: string | null; personalization: unknown;
   rejectionNote: string | null; createdById: string | null; createdAt: Date | string; updatedAt: Date | string;
+  /** Email delivery pipeline (Phase 6 — connections). */
+  emailConnectionId: string | null; sendAttempts: number; sendError: string | null;
 }
 
 // ── Repositories ──────────────────────────────────────────────────────────

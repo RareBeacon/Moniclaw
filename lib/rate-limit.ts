@@ -80,4 +80,7 @@ export const RATE_LIMITS = {
   browserUpload: { limit: 30, windowMs: 60 * 60_000 }, // per workspace (file uploads)
   salesResearch: { limit: 20, windowMs: 60 * 60_000 }, // per workspace (research dispatches)
   salesDraftCreate: { limit: 120, windowMs: 60 * 60_000 }, // per workspace (manual drafts)
+  salesEmailConnection: { limit: 30, windowMs: 60 * 60_000 }, // per workspace (connection writes)
+  salesEmailVerify: { limit: 20, windowMs: 60 * 60_000 }, // per workspace (SMTP handshakes/test mails)
+  salesEmailSend: { limit: 60, windowMs: 60 * 60_000 }, // per workspace (manual send decisions)
 } as const;

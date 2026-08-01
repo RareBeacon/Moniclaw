@@ -5,9 +5,16 @@ import { AccessDenied } from "@/components/dashboard/access-denied";
 import { requireSalesAction } from "@/lib/sales/require-sales";
 import { salesRepos } from "@/lib/sales/page-data";
 import { SettingsForm } from "@/components/dashboard/sales/forms";
+import { EmailConnectionsPanel } from "@/components/dashboard/sales/email-connections";
+import { listConnections } from "@/lib/email/connections";
 
 export const metadata: Metadata = { title: "Sales · Settings", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
+
+/** Safe projection for the panel — listConnections never selects credentials. */
+async function listSafeConnections(workspaceId: string) {
+  return listConnections(workspaceId);
+}
 
 export default async function SalesSettingsPage() {
   const gate = await requireSalesAction("sales.settings.manage");
@@ -48,6 +55,11 @@ export default async function SalesSettingsPage() {
           }}
         />
       </div>
+
+      <EmailConnectionsPanel
+        canManage
+        connections={gate ? await listSafeConnections(gate.workspace.id) : []}
+      />
 
       <section className="rounded-2xl border border-border bg-card p-5 text-sm leading-6">
         <p className="font-semibold">Knowledge & playbooks</p>

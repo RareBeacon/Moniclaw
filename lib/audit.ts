@@ -121,6 +121,15 @@ export const AUDIT_ACTIONS = {
   salesSettingsUpdate: "sales.settings.update",
   salesSearchSave: "sales.search.save",
   salesSearchDelete: "sales.search.delete",
+  salesEmailConnectionCreate: "sales.email.connection.create",
+  salesEmailConnectionUpdate: "sales.email.connection.update",
+  salesEmailConnectionDelete: "sales.email.connection.delete",
+  salesEmailConnectionVerified: "sales.email.connection.verified",
+  salesEmailConnectionFailed: "sales.email.connection.failed",
+  salesDraftSendRequested: "sales.draft.send.requested",
+  salesDraftSent: "sales.draft.sent",
+  salesDraftSendFailed: "sales.draft.send_failed",
+  salesEmailTick: "sales.email.tick",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

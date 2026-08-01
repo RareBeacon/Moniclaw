@@ -69,13 +69,13 @@ model User {
   browserUploads         BrowserUpload[]
 
   // Sales Employee (Phase 6)
-  salesCompaniesOwned  SalesCompany[]  @relation("SalesCompanyOwner")
-  salesContactsOwned   SalesContact[]  @relation("SalesContactOwner")
-  salesDealsOwned      SalesDeal[]     @relation("SalesDealOwner")
-  salesActivities      SalesActivity[] @relation("SalesActivityAuthor")
-  salesCampaigns       SalesCampaign[] @relation("SalesCampaignCreator")
-  salesDrafts          SalesDraft[]    @relation("SalesDraftCreator")
-  salesSavedSearches   SalesSavedSearch[] @relation("SalesSearchCreator")
+  salesCompaniesOwned SalesCompany[]     @relation("SalesCompanyOwner")
+  salesContactsOwned  SalesContact[]     @relation("SalesContactOwner")
+  salesDealsOwned     SalesDeal[]        @relation("SalesDealOwner")
+  salesActivities     SalesActivity[]    @relation("SalesActivityAuthor")
+  salesCampaigns      SalesCampaign[]    @relation("SalesCampaignCreator")
+  salesDrafts         SalesDraft[]       @relation("SalesDraftCreator")
+  salesSavedSearches  SalesSavedSearch[] @relation("SalesSearchCreator")
 
   @@index([deletedAt])
   @@map("users")
@@ -180,23 +180,24 @@ model Workspace {
   planApprovals      Approval[]
 
   // Computer Use Engine (Phase 4)
-  browserSettings      BrowserWorkspaceSettings?
-  browserPolicy        BrowserPolicy?
-  browserProfiles      BrowserProfile[]
-  browserSessions      BrowserSession[]
-  browserExecutions    BrowserExecution[]
-  browserBinaries      BrowserBinary[]
+  browserSettings   BrowserWorkspaceSettings?
+  browserPolicy     BrowserPolicy?
+  browserProfiles   BrowserProfile[]
+  browserSessions   BrowserSession[]
+  browserExecutions BrowserExecution[]
+  browserBinaries   BrowserBinary[]
 
   // Sales Employee (Phase 6)
-  salesCompanies    SalesCompany[]
-  salesContacts     SalesContact[]
-  salesPipelines    SalesPipeline[]
-  salesDeals        SalesDeal[]
-  salesActivities   SalesActivity[]
-  salesCampaigns    SalesCampaign[]
-  salesDrafts       SalesDraft[]
+  salesCompanies     SalesCompany[]
+  salesContacts      SalesContact[]
+  salesPipelines     SalesPipeline[]
+  salesDeals         SalesDeal[]
+  salesActivities    SalesActivity[]
+  salesCampaigns     SalesCampaign[]
+  salesDrafts        SalesDraft[]
   salesSavedSearches SalesSavedSearch[]
-  salesSettings     SalesWorkspaceSettings?
+  salesSettings      SalesWorkspaceSettings?
+  emailConnections   EmailConnection[]
 
   @@index([deletedAt])
   @@map("workspaces")
@@ -264,28 +265,28 @@ enum TriggerType {
 }
 
 model Agent {
-  id          String      @id @default(uuid())
-  workspaceId String
-  name        String
-  slug        String
-  description String
-  category    String?
-  status      AgentStatus @default(DRAFT)
-  trigger     TriggerType @default(MANUAL)
-  schedule    String?
-  policy      Json        @default("{}")
-  skills      String[]    @default([])
+  id              String      @id @default(uuid())
+  workspaceId     String
+  name            String
+  slug            String
+  description     String
+  category        String?
+  status          AgentStatus @default(DRAFT)
+  trigger         TriggerType @default(MANUAL)
+  schedule        String?
+  policy          Json        @default("{}")
+  skills          String[]    @default([])
   // ── Phase 5 · AI Workers (all additive; Phase 2 semantics untouched) ──
-  workerType       String    @default("general") // general | research | ops
-  goal             String?   // natural-language objective the worker pursues
-  instructions     String?   // operator constraints above the worker's own judgment
-  toolPolicy       Json      @default("{}") // {allow?: string[], deny?: string[], allowDelegation?: bool}
-  budget           Json      @default("{}") // {maxSteps, maxTokens, maxCostMicros, maxDurationMs, maxConcurrentRuns, maxDepth}
-  lastScheduledAt  DateTime? // last cron dispatch (schedule due-evaluation)
-  runCount         Int       @default(0)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  deletedAt   DateTime?
+  workerType      String      @default("general") // general | research | ops
+  goal            String? // natural-language objective the worker pursues
+  instructions    String? // operator constraints above the worker's own judgment
+  toolPolicy      Json        @default("{}") // {allow?: string[], deny?: string[], allowDelegation?: bool}
+  budget          Json        @default("{}") // {maxSteps, maxTokens, maxCostMicros, maxDurationMs, maxConcurrentRuns, maxDepth}
+  lastScheduledAt DateTime? // last cron dispatch (schedule due-evaluation)
+  runCount        Int         @default(0)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  deletedAt       DateTime?
 
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   runs      AgentRun[]
@@ -330,16 +331,16 @@ model AgentRun {
 
   // ── Phase 5 · run orchestration (all additive) ──
   parentRunId     String?
-  depth           Int      @default(0) // delegation nesting; cap from budget
-  plan            Json?    // validated planner decomposition
-  progress        Json?    // {nextIndex, trace summary} checkpoint for resume
-  budgetSnapshot  Json?    // resolved budget at dispatch (immutable per run)
-  idempotencyKey  String?  // deduplicates dispatch (unique with agentId; NULLs allowed)
-  output          Json?    // worker result (report, citations, artifacts)
+  depth           Int     @default(0) // delegation nesting; cap from budget
+  plan            Json? // validated planner decomposition
+  progress        Json? // {nextIndex, trace summary} checkpoint for resume
+  budgetSnapshot  Json? // resolved budget at dispatch (immutable per run)
+  idempotencyKey  String? // deduplicates dispatch (unique with agentId; NULLs allowed)
+  output          Json? // worker result (report, citations, artifacts)
   errorClass      String?
-  cancelRequested Boolean  @default(false)
-  tokensUsed      Int      @default(0)
-  stepsExecuted   Int      @default(0)
+  cancelRequested Boolean @default(false)
+  tokensUsed      Int     @default(0)
+  stepsExecuted   Int     @default(0)
 
   agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -353,10 +354,10 @@ model AgentRun {
   salesActivities   SalesActivity[] @relation("SalesActivityRun")
   salesDrafts       SalesDraft[]    @relation("SalesDraftRun")
 
+  @@unique([agentId, idempotencyKey], name: "agentRunIdempotency")
   @@index([workspaceId, status, createdAt])
   @@index([agentId, createdAt])
   @@index([parentRunId])
-  @@unique([agentId, idempotencyKey], name: "agentRunIdempotency")
   @@map("agent_runs")
 }
 
@@ -541,21 +542,21 @@ enum AiProviderId {
 /// BYOK provider credentials per workspace. API keys are stored encrypted
 /// (AES-256-GCM, key derived from AUTH_SECRET) — never plaintext.
 model AiProviderConfig {
-  id               String       @id @default(uuid())
-  workspaceId      String
-  provider         AiProviderId
-  label            String
-  baseUrl          String? // Ollama endpoint / compatible gateways
-  apiKeyEnc        String? // ciphertext; NULL for keyless (Ollama)
-  enabled          Boolean      @default(true)
-  priority         Int          @default(100) // lower = tried earlier
-  defaultModel     String?
-  healthStatus     String? // "ok" | "error" after last test
-  healthCheckedAt  DateTime?
-  healthError      String?
-  createdById      String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id              String       @id @default(uuid())
+  workspaceId     String
+  provider        AiProviderId
+  label           String
+  baseUrl         String? // Ollama endpoint / compatible gateways
+  apiKeyEnc       String? // ciphertext; NULL for keyless (Ollama)
+  enabled         Boolean      @default(true)
+  priority        Int          @default(100) // lower = tried earlier
+  defaultModel    String?
+  healthStatus    String? // "ok" | "error" after last test
+  healthCheckedAt DateTime?
+  healthError     String?
+  createdById     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
@@ -567,20 +568,20 @@ model AiProviderConfig {
 
 /// Per-workspace AI tunables: defaults + memory/knowledge/tool limits.
 model AiWorkspaceSettings {
-  workspaceId             String   @id
-  defaultProvider         AiProviderId?
-  defaultModel            String   @default("gemini-2.5-flash")
-  embeddingModel          String   @default("text-embedding-004")
-  memoryMaxRecords        Int      @default(5000)
-  memoryRetentionDays     Int      @default(180)
-  memorySummarizeAfter    Int      @default(40) // messages before compression
-  knowledgeMaxDocuments   Int      @default(200)
-  knowledgeMaxFileMB      Int      @default(10)
-  knowledgeMaxChunksPerDoc Int     @default(2000)
-  toolPermissions         Json     @default("{}") // { toolName: boolean }
-  updatedById             String?
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  workspaceId              String        @id
+  defaultProvider          AiProviderId?
+  defaultModel             String        @default("gemini-2.5-flash")
+  embeddingModel           String        @default("text-embedding-004")
+  memoryMaxRecords         Int           @default(5000)
+  memoryRetentionDays      Int           @default(180)
+  memorySummarizeAfter     Int           @default(40) // messages before compression
+  knowledgeMaxDocuments    Int           @default(200)
+  knowledgeMaxFileMB       Int           @default(10)
+  knowledgeMaxChunksPerDoc Int           @default(2000)
+  toolPermissions          Json          @default("{}") // { toolName: boolean }
+  updatedById              String?
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   updatedBy User?     @relation(fields: [updatedById], references: [id], onDelete: SetNull)
@@ -636,20 +637,20 @@ enum MemoryScope {
 /// Memory records; vector column enables semantic recall (pgvector, 768-d
 /// gemini embeddings — see runtime/embeddings for the model contract).
 model MemoryRecord {
-  id              String      @id @default(uuid())
+  id              String                      @id @default(uuid())
   workspaceId     String
   scope           MemoryScope
   agentId         String?
   conversationKey String? // e.g. AiConversation.id or external thread id
-  content         String      @db.Text
-  importance      Int         @default(50) // 0..100 ranking weight
-  tags            String[]    @default([])
+  content         String                      @db.Text
+  importance      Int                         @default(50) // 0..100 ranking weight
+  tags            String[]                    @default([])
   embedding       Unsupported("vector(768)")?
   embeddingModel  String?
   expiresAt       DateTime? // expiration policy: NULL = keep
   createdById     String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   agent     Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
@@ -703,7 +704,7 @@ model AiMessage {
   createdAt        DateTime @default(now())
 
   conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace    Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
   @@index([workspaceId, createdAt])
@@ -740,8 +741,8 @@ model KnowledgeDocument {
   updatedAt   DateTime           @updatedAt
   deletedAt   DateTime? // soft delete keeps chunks recoverable
 
-  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
   chunks    KnowledgeChunk[]
 
   @@unique([workspaceId, checksum])
@@ -750,17 +751,17 @@ model KnowledgeDocument {
 }
 
 model KnowledgeChunk {
-  id         String   @id @default(uuid())
-  documentId String
+  id          String                      @id @default(uuid())
+  documentId  String
   workspaceId String // denormalized for tenant-scoped similarity
-  index      Int
-  content    String   @db.Text
-  tokenCount Int
-  embedding  Unsupported("vector(768)")?
-  createdAt  DateTime @default(now())
+  index       Int
+  content     String                      @db.Text
+  tokenCount  Int
+  embedding   Unsupported("vector(768)")?
+  createdAt   DateTime                    @default(now())
 
-  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([documentId, index])
   @@index([workspaceId])
@@ -770,12 +771,12 @@ model KnowledgeChunk {
 /// Cross-request embedding cache, keyed by model+text hash (content-derived,
 /// tenant-agnostic: identical text yields identical vectors).
 model EmbeddingCache {
-  hash      String   @id // sha256(model + ":" + text)
+  hash      String                     @id // sha256(model + ":" + text)
   model     String
   dim       Int
   vector    Unsupported("vector(768)")
-  hitCount  Int      @default(0)
-  createdAt DateTime @default(now())
+  hitCount  Int                        @default(0)
+  createdAt DateTime                   @default(now())
 
   @@index([model])
   @@map("embedding_cache")
@@ -957,20 +958,20 @@ enum BrowserActionStatus {
 
 /// Per-workspace engine defaults (edits flow from the Browser Settings page).
 model BrowserWorkspaceSettings {
-  workspaceId            String   @id
-  defaultBrowser         BrowserKind @default(CHROMIUM)
-  headless               Boolean  @default(true)
-  actionTimeoutMs        Int      @default(30000)
-  executionTimeoutMs     Int      @default(120000)
-  sessionIdleTimeoutSec  Int      @default(600)
-  maxConcurrentSessions  Int      @default(3)
-  dialogPolicy           String   @default("dismiss") // dismiss | accept
-  screenshotOnFail       Boolean  @default(true)
-  recordScreenshots      Boolean  @default(true)
-  maxArtifactMB          Int      @default(25)
-  updatedById            String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  workspaceId           String      @id
+  defaultBrowser        BrowserKind @default(CHROMIUM)
+  headless              Boolean     @default(true)
+  actionTimeoutMs       Int         @default(30000)
+  executionTimeoutMs    Int         @default(120000)
+  sessionIdleTimeoutSec Int         @default(600)
+  maxConcurrentSessions Int         @default(3)
+  dialogPolicy          String      @default("dismiss") // dismiss | accept
+  screenshotOnFail      Boolean     @default(true)
+  recordScreenshots     Boolean     @default(true)
+  maxArtifactMB         Int         @default(25)
+  updatedById           String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -1004,17 +1005,17 @@ model BrowserPolicy {
 /// Reusable browser profiles — cookies + web storage encrypted at rest
 /// (AES-256-GCM vault, same construction as provider BYOK keys).
 model BrowserProfile {
-  id              String       @id @default(uuid())
+  id              String      @id @default(uuid())
   workspaceId     String
   name            String
   description     String?
-  browser         BrowserKind  @default(CHROMIUM)
+  browser         BrowserKind @default(CHROMIUM)
   userAgent       String?
   viewport        Json? // {width, height}
   storageStateEnc String? // encrypted playwright storageState JSON
   createdById     String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
   deletedAt       DateTime?
 
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1049,9 +1050,9 @@ model BrowserSession {
   createdAt      DateTime             @default(now())
   closedAt       DateTime?
 
-  workspace  Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user       User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  profile    BrowserProfile?   @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  workspace  Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user       User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  profile    BrowserProfile?    @relation(fields: [profileId], references: [id], onDelete: SetNull)
   executions BrowserExecution[]
 
   @@index([workspaceId, status, lastActivityAt])
@@ -1062,29 +1063,29 @@ model BrowserSession {
 /// validate → retry → terminal state. Steps live in `plan` (validated JSON);
 /// the audit trail lives in BrowserActionEvent rows.
 model BrowserExecution {
-  id           String                 @id @default(uuid())
-  workspaceId  String
-  userId       String?
-  sessionId    String
-  goal         String?
-  status       BrowserExecutionStatus @default(QUEUED)
-  plan         Json? // [{seq, action, args, selector?}] validated at queue time
-  result       Json? // {outputs: {seq: value}, summary?}
-  error        String?
-  approvalId   String? // parked-approval link (plan/risky domain/JS)
-  stepCount    Int                  @default(0)
-  failedStep   Int?
-  attempts     Int                  @default(0)
-  startedAt    DateTime?
-  finishedAt   DateTime?
-  createdAt    DateTime             @default(now())
+  id          String                 @id @default(uuid())
+  workspaceId String
+  userId      String?
+  sessionId   String
+  goal        String?
+  status      BrowserExecutionStatus @default(QUEUED)
+  plan        Json? // [{seq, action, args, selector?}] validated at queue time
+  result      Json? // {outputs: {seq: value}, summary?}
+  error       String?
+  approvalId  String? // parked-approval link (plan/risky domain/JS)
+  stepCount   Int                    @default(0)
+  failedStep  Int?
+  attempts    Int                    @default(0)
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime               @default(now())
 
-  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
-  session   BrowserSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  events    BrowserActionEvent[]
-  recording BrowserRecording?
-  downloads BrowserDownload[]
+  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  session     BrowserSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  events      BrowserActionEvent[]
+  recording   BrowserRecording?
+  downloads   BrowserDownload[]
   screenshots BrowserScreenshot[]
 
   @@index([workspaceId, status, createdAt])
@@ -1095,21 +1096,21 @@ model BrowserExecution {
 /// One row per action attempt — the recording trail, the audit log, and the
 /// replay source of truth. seq + attempt reproduce the exact timeline.
 model BrowserActionEvent {
-  id          String             @id @default(uuid())
-  executionId String
-  workspaceId String // denormalized for tenant-scoped reads
-  seq         Int
-  action      String // action definition id, e.g. "navigate" | "click"
-  selector    Json? // normalized SelectorSpec actually used (after healing)
-  args        Json?
-  status      BrowserActionStatus
-  attempt     Int                @default(1)
-  durationMs  Int?
-  error       String?
+  id           String              @id @default(uuid())
+  executionId  String
+  workspaceId  String // denormalized for tenant-scoped reads
+  seq          Int
+  action       String // action definition id, e.g. "navigate" | "click"
+  selector     Json? // normalized SelectorSpec actually used (after healing)
+  args         Json?
+  status       BrowserActionStatus
+  attempt      Int                 @default(1)
+  durationMs   Int?
+  error        String?
   screenshotId String?
-  healedFrom  Json? // original selector when self-healing succeeded
-  metadata    Json?
-  createdAt   DateTime           @default(now())
+  healedFrom   Json? // original selector when self-healing succeeded
+  metadata     Json?
+  createdAt    DateTime            @default(now())
 
   execution BrowserExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
@@ -1120,16 +1121,16 @@ model BrowserActionEvent {
 
 /// Compact replay metadata per execution (frames reference screenshots).
 model BrowserRecording {
-  id           String   @id @default(uuid())
-  executionId  String   @unique
-  workspaceId  String
-  steps        Int      @default(0)
-  screenshots  Int      @default(0)
-  errors       Int      @default(0)
-  retries      Int      @default(0)
-  durationMs   Int      @default(0)
-  timeline     Json     // [{seq, action, status, at, durationMs, screenshotId?, url?}]
-  createdAt    DateTime @default(now())
+  id          String   @id @default(uuid())
+  executionId String   @unique
+  workspaceId String
+  steps       Int      @default(0)
+  screenshots Int      @default(0)
+  errors      Int      @default(0)
+  retries     Int      @default(0)
+  durationMs  Int      @default(0)
+  timeline    Json // [{seq, action, status, at, durationMs, screenshotId?, url?}]
+  createdAt   DateTime @default(now())
 
   execution BrowserExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
@@ -1149,7 +1150,7 @@ model BrowserBinary {
   data        Bytes
   createdAt   DateTime @default(now())
 
-  workspace   Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   downloads   BrowserDownload[]
   uploads     BrowserUpload[]
   screenshots BrowserScreenshot[]
@@ -1181,7 +1182,7 @@ model BrowserDownload {
 }
 
 model BrowserUpload {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   workspaceId String
   uploaderId  String?
   filename    String
@@ -1189,8 +1190,8 @@ model BrowserUpload {
   sizeBytes   Int
   sha256      String
   binaryId    String
-  usedCount   Int      @default(0)
-  createdAt   DateTime @default(now())
+  usedCount   Int       @default(0)
+  createdAt   DateTime  @default(now())
   deletedAt   DateTime?
 
   binary   BrowserBinary @relation(fields: [binaryId], references: [id], onDelete: Cascade)
@@ -1296,50 +1297,62 @@ enum SalesDraftStatus {
   APPROVED
   REJECTED
   SCHEDULED
+  SENDING
   SENT
   FAILED
   CANCELED
 }
 
-model SalesCompany {
-  id            String              @id @default(uuid())
-  workspaceId   String
-  name          String
-  domain        String?
-  industry      String?
-  size          String? // headcount bucket, e.g. "11-50"
-  geography     String? // HQ + presence, free-form for now
-  businessModel String?
-  productsServices String?
-  targetMarket  String?
-  techStack     String[]             @default([])
-  socialLinks   Json                 @default("[]") // [{type: linkedin|x|facebook…, url}]
-  summary       String? // worker-written profile abstract
-  sources       Json                 @default("[]") // citations [{url,title}]
-  researchStatus     SalesResearchStatus @default(NONE)
-  lastResearchedAt   DateTime?
-  lastResearchRunId  String? // link into packages/agent-runtime evidence
-  // Prospecting scores (pure deterministic logic in packages/sales-runtime/scoring)
-  icpFit         Int? // 0-100 ICP match (null until configured)
-  fitScore       Int  @default(0) // 0-100 company signal score
-  priorityScore  Int  @default(0) // 0-100 outreach priority
-  scoreReasons   Json @default("{}") // explainability per score
-  tags           String[] @default([])
-  segment        String?
-  territory      String?
-  ownerId        String?
-  custom         Json     @default("{}")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  deletedAt      DateTime?
+enum EmailConnectionStatus {
+  UNVERIFIED
+  VERIFIED
+  FAILED
+}
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  owner     User?     @relation("SalesCompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  researchRun AgentRun? @relation("SalesCompanyResearch", fields: [lastResearchRunId], references: [id], onDelete: SetNull)
-  contacts  SalesContact[]
-  deals     SalesDeal[]
-  activities SalesActivity[]
-  drafts    SalesDraft[]
+enum EmailProviderKind {
+  SMTP
+  AMAZON_SES
+}
+
+model SalesCompany {
+  id                String              @id @default(uuid())
+  workspaceId       String
+  name              String
+  domain            String?
+  industry          String?
+  size              String? // headcount bucket, e.g. "11-50"
+  geography         String? // HQ + presence, free-form for now
+  businessModel     String?
+  productsServices  String?
+  targetMarket      String?
+  techStack         String[]            @default([])
+  socialLinks       Json                @default("[]") // [{type: linkedin|x|facebook…, url}]
+  summary           String? // worker-written profile abstract
+  sources           Json                @default("[]") // citations [{url,title}]
+  researchStatus    SalesResearchStatus @default(NONE)
+  lastResearchedAt  DateTime?
+  lastResearchRunId String? // link into packages/agent-runtime evidence
+  // Prospecting scores (pure deterministic logic in packages/sales-runtime/scoring)
+  icpFit            Int? // 0-100 ICP match (null until configured)
+  fitScore          Int                 @default(0) // 0-100 company signal score
+  priorityScore     Int                 @default(0) // 0-100 outreach priority
+  scoreReasons      Json                @default("{}") // explainability per score
+  tags              String[]            @default([])
+  segment           String?
+  territory         String?
+  ownerId           String?
+  custom            Json                @default("{}")
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  deletedAt         DateTime?
+
+  workspace   Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner       User?                     @relation("SalesCompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  researchRun AgentRun?                 @relation("SalesCompanyResearch", fields: [lastResearchRunId], references: [id], onDelete: SetNull)
+  contacts    SalesContact[]
+  deals       SalesDeal[]
+  activities  SalesActivity[]
+  drafts      SalesDraft[]
   enrollments SalesCampaignEnrollment[]
 
   @@unique([workspaceId, domain], name: "salesCompanyDomain")
@@ -1349,31 +1362,31 @@ model SalesCompany {
 }
 
 model SalesContact {
-  id          String   @id @default(uuid())
-  workspaceId String
-  companyId   String?
-  name        String
-  title       String?
-  email       String?
-  linkedinUrl String?
-  phone       String?
-  notes       String?
-  status      SalesContactStatus @default(NEW)
-  source      SalesContactSource @default(MANUAL)
-  tags        String[]  @default([])
-  ownerId     String?
+  id            String             @id @default(uuid())
+  workspaceId   String
+  companyId     String?
+  name          String
+  title         String?
+  email         String?
+  linkedinUrl   String?
+  phone         String?
+  notes         String?
+  status        SalesContactStatus @default(NEW)
+  source        SalesContactSource @default(MANUAL)
+  tags          String[]           @default([])
+  ownerId       String?
   lastTouchedAt DateTime?
-  custom      Json      @default("{}")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  custom        Json               @default("{}")
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  deletedAt     DateTime?
 
-  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  company   SalesCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  owner     User?        @relation("SalesContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  deals     SalesDeal[]
-  activities SalesActivity[]
-  drafts    SalesDraft[]
+  workspace   Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company     SalesCompany?             @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  owner       User?                     @relation("SalesContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  deals       SalesDeal[]
+  activities  SalesActivity[]
+  drafts      SalesDraft[]
   enrollments SalesCampaignEnrollment[]
 
   @@unique([workspaceId, email], name: "salesContactEmail")
@@ -1390,7 +1403,7 @@ model SalesPipeline {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   stages    SalesPipelineStage[]
   deals     SalesDeal[]
 
@@ -1414,33 +1427,33 @@ model SalesPipelineStage {
 }
 
 model SalesDeal {
-  id               String   @id @default(uuid())
+  id               String          @id @default(uuid())
   workspaceId      String
   companyId        String
   primaryContactId String?
   pipelineId       String
   stageId          String
   title            String
-  valueUsd         Decimal? @db.Decimal(14, 2)
-  currency         String   @default("USD")
+  valueUsd         Decimal?        @db.Decimal(14, 2)
+  currency         String          @default("USD")
   status           SalesDealStatus @default(OPEN)
   expectedCloseAt  DateTime?
   closedAt         DateTime?
   lostReason       String?
   ownerId          String?
-  tags             String[] @default([])
-  custom           Json     @default("{}")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  tags             String[]        @default([])
+  custom           Json            @default("{}")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
   deletedAt        DateTime?
 
-  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  company         SalesCompany   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  primaryContact  SalesContact?  @relation(fields: [primaryContactId], references: [id], onDelete: SetNull)
-  pipeline        SalesPipeline  @relation(fields: [pipelineId], references: [id], onDelete: NoAction)
-  stage           SalesPipelineStage @relation(fields: [stageId], references: [id], onDelete: NoAction)
-  owner           User?          @relation("SalesDealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  activities      SalesActivity[]
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company        SalesCompany       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  primaryContact SalesContact?      @relation(fields: [primaryContactId], references: [id], onDelete: SetNull)
+  pipeline       SalesPipeline      @relation(fields: [pipelineId], references: [id], onDelete: NoAction)
+  stage          SalesPipelineStage @relation(fields: [stageId], references: [id], onDelete: NoAction)
+  owner          User?              @relation("SalesDealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  activities     SalesActivity[]
 
   @@index([workspaceId, status])
   @@index([pipelineId, stageId])
@@ -1449,28 +1462,28 @@ model SalesDeal {
 }
 
 model SalesActivity {
-  id          String   @id @default(uuid())
-  workspaceId String
-  companyId   String?
-  contactId   String?
-  dealId      String?
-  type        SalesActivityType
-  subject     String
-  body        String?
-  dueAt       DateTime?
-  completedAt DateTime?
+  id             String            @id @default(uuid())
+  workspaceId    String
+  companyId      String?
+  contactId      String?
+  dealId         String?
+  type           SalesActivityType
+  subject        String
+  body           String?
+  dueAt          DateTime?
+  completedAt    DateTime?
   reminderSentAt DateTime?
-  createdById String?
-  agentRunId  String? // worker-logged activities carry their evidence run
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdById    String?
+  agentRunId     String? // worker-logged activities carry their evidence run
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
-  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  company   SalesCompany?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  contact   SalesContact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  deal      SalesDeal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  createdBy User?          @relation("SalesActivityAuthor", fields: [createdById], references: [id], onDelete: SetNull)
-  agentRun  AgentRun?      @relation("SalesActivityRun", fields: [agentRunId], references: [id], onDelete: SetNull)
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  company   SalesCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contact   SalesContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  deal      SalesDeal?    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  createdBy User?         @relation("SalesActivityAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  agentRun  AgentRun?     @relation("SalesActivityRun", fields: [agentRunId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, dueAt])
   @@index([companyId, createdAt])
@@ -1479,25 +1492,25 @@ model SalesActivity {
 }
 
 model SalesCampaign {
-  id            String   @id @default(uuid())
-  workspaceId   String
-  name          String
-  goal          String?
-  status        SalesCampaignStatus @default(DRAFT)
-  dailyCap      Int      @default(20) // outbound draft-production cap per day
-  sendWindow    Json     @default("{}") // {daysOfWeek:[1..5], startHour,endHour, timezone}
+  id               String              @id @default(uuid())
+  workspaceId      String
+  name             String
+  goal             String?
+  status           SalesCampaignStatus @default(DRAFT)
+  dailyCap         Int                 @default(20) // outbound draft-production cap per day
+  sendWindow       Json                @default("{}") // {daysOfWeek:[1..5], startHour,endHour, timezone}
   knowledgeContext String? // playbook hints appended to retrieval queries
-  createdById   String?
-  startedAt     DateTime?
-  completedAt   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  deletedAt     DateTime?
+  createdById      String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  deletedAt        DateTime?
 
-  workspace    Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy    User?                    @relation("SalesCampaignCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  steps        SalesCampaignStep[]
-  enrollments  SalesCampaignEnrollment[]
+  workspace   Workspace                 @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User?                     @relation("SalesCampaignCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  steps       SalesCampaignStep[]
+  enrollments SalesCampaignEnrollment[]
 
   @@unique([workspaceId, name], name: "salesCampaignName")
   @@index([workspaceId, status])
@@ -1505,17 +1518,17 @@ model SalesCampaign {
 }
 
 model SalesCampaignStep {
-  id           String @id @default(uuid())
+  id           String                @id @default(uuid())
   campaignId   String
   order        Int
   kind         SalesCampaignStepKind
   subject      String?
   bodyTemplate String?
-  delayValue   Int      @default(0)
-  delayUnit    String   @default("DAYS") // HOURS | DAYS
-  condition    Json     @default("{}") // {ifContactStatus?: string[], ifNoReplyAfterDays?: number}
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  delayValue   Int                   @default(0)
+  delayUnit    String                @default("DAYS") // HOURS | DAYS
+  condition    Json                  @default("{}") // {ifContactStatus?: string[], ifNoReplyAfterDays?: number}
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
 
   campaign SalesCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
@@ -1524,22 +1537,22 @@ model SalesCampaignStep {
 }
 
 model SalesCampaignEnrollment {
-  id            String   @id @default(uuid())
-  campaignId    String
-  contactId     String
-  companyId     String?
-  status        SalesEnrollmentStatus @default(ACTIVE)
-  currentStep   Int      @default(0)
-  nextRunAt     DateTime?
-  pausedAt      DateTime?
-  completedAt   DateTime?
-  exitReason    String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String                @id @default(uuid())
+  campaignId  String
+  contactId   String
+  companyId   String?
+  status      SalesEnrollmentStatus @default(ACTIVE)
+  currentStep Int                   @default(0)
+  nextRunAt   DateTime?
+  pausedAt    DateTime?
+  completedAt DateTime?
+  exitReason  String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
 
-  campaign SalesCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contact  SalesContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  company  SalesCompany?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  campaign SalesCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  SalesContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  company  SalesCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
   drafts   SalesDraft[]
 
   @@unique([campaignId, contactId], name: "salesEnrollment")
@@ -1548,40 +1561,82 @@ model SalesCampaignEnrollment {
 }
 
 model SalesDraft {
-  id            String   @id @default(uuid())
-  workspaceId   String
-  contactId     String?
-  companyId     String?
+  id                   String            @id @default(uuid())
+  workspaceId          String
+  contactId            String?
+  companyId            String?
   campaignEnrollmentId String?
-  channel       SalesDraftChannel @default(EMAIL)
-  subject       String?
-  body          String
-  status        SalesDraftStatus @default(DRAFT)
-  scheduledAt   DateTime?
-  sentAt        DateTime?
-  threadId      String?
-  providerMessageId String?
-  deliveryStatus String   @default("UNKNOWN") // UNKNOWN|PENDING|DELIVERED|BOUNCED|OPENED
-  approvalId    String? // bridges to the Phase-2/3 Approval table
-  agentRunId    String? // worker that produced this draft
-  personalization Json  @default("{}") // template vars + retrieval context
-  rejectionNote String?
-  createdById   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  deletedAt     DateTime?
+  channel              SalesDraftChannel @default(EMAIL)
+  subject              String?
+  body                 String
+  status               SalesDraftStatus  @default(DRAFT)
+  scheduledAt          DateTime?
+  sentAt               DateTime?
+  threadId             String?
+  providerMessageId    String?
+  deliveryStatus       String            @default("UNKNOWN") // UNKNOWN|PENDING|DELIVERED|BOUNCED|OPENED
+  approvalId           String? // bridges to the Phase-2/3 Approval table
+  agentRunId           String? // worker that produced this draft
+  personalization      Json              @default("{}") // template vars + retrieval context
+  rejectionNote        String?
+  // Email delivery pipeline (Phase 6 — email connections)
+  emailConnectionId    String?
+  sendAttempts         Int               @default(0)
+  sendError            String?
+  createdById          String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  deletedAt            DateTime?
 
-  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  contact    SalesContact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  company    SalesCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  enrollment SalesCampaignEnrollment? @relation(fields: [campaignEnrollmentId], references: [id], onDelete: SetNull)
-  approval   Approval?   @relation("SalesDraftApproval", fields: [approvalId], references: [id], onDelete: SetNull)
-  agentRun   AgentRun?   @relation("SalesDraftRun", fields: [agentRunId], references: [id], onDelete: SetNull)
-  createdBy  User?       @relation("SalesDraftCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  workspace       Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact         SalesContact?            @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  company         SalesCompany?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  enrollment      SalesCampaignEnrollment? @relation(fields: [campaignEnrollmentId], references: [id], onDelete: SetNull)
+  approval        Approval?                @relation("SalesDraftApproval", fields: [approvalId], references: [id], onDelete: SetNull)
+  agentRun        AgentRun?                @relation("SalesDraftRun", fields: [agentRunId], references: [id], onDelete: SetNull)
+  createdBy       User?                    @relation("SalesDraftCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  emailConnection EmailConnection?         @relation(fields: [emailConnectionId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, status, createdAt])
+  @@index([workspaceId, status, scheduledAt])
   @@index([contactId])
   @@map("sales_drafts")
+}
+
+/**
+ * Workspace-connected outbound email identity. Amazon SES is first-class
+ * (SMTP endpoint preset per region); any SMTP provider (Gmail, Outlook,
+ * business mail relay) connects with the same fields. The password lives in
+ * the lib/crypto AES-256-GCM vault — never returned by any API.
+ * Nothing auto-sends: only human-approved, scheduled drafts flow through a
+ * connection, via the cron tick or an explicit "send now" decision.
+ */
+model EmailConnection {
+  id             String                @id @default(uuid())
+  workspaceId    String
+  provider       EmailProviderKind     @default(SMTP)
+  label          String
+  senderName     String?
+  senderEmail    String
+  smtpHost       String
+  smtpPort       Int
+  smtpSecure     Boolean               @default(false) // true = implicit TLS (:465); false = STARTTLS/plain (:587)
+  smtpUsername   String?
+  passwordEnc    String?
+  region         String? // SES region label (e.g. eu-west-1) — informational + host preset
+  status         EmailConnectionStatus @default(UNVERIFIED)
+  isDefault      Boolean               @default(false)
+  lastVerifiedAt DateTime?
+  lastError      String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  drafts    SalesDraft[]
+
+  @@unique([workspaceId, senderEmail])
+  @@index([workspaceId, isDefault])
+  @@map("email_connections")
 }
 
 model SalesSavedSearch {

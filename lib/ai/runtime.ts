@@ -15,6 +15,7 @@ import {
   createMemoryRecallTool,
 } from "@runtime/tools/builtin/contextual";
 import { browserTools } from "./browser-registration";
+import { salesTools } from "./sales-tool-registration";
 import { providerConfigSource } from "./settings";
 
 /**
@@ -58,6 +59,10 @@ export function getRuntime(): RuntimeContainer {
 
   // Phase 4: the Computer Use Engine is a Tool Provider in this same runtime.
   for (const tool of browserTools()) tools.register(tool);
+
+  // Phase 6: Sales CRM tools flow through this same registry — workflow tool
+  // nodes and worker planners reach sales data with identical policy/audit.
+  for (const tool of salesTools()) tools.register(tool);
 
   const executor = new ToolExecutor(
     tools,
