@@ -210,11 +210,18 @@ async function main() {
     );
 
     console.log("\nproviders catalog:");
-    const prov = await api<{ catalog: Array<{ id: string }>; configs: unknown[] }>(cookie, "GET", "/api/ai/providers");
+    const prov = await api<{ catalog: Array<{ id: string; status: string }>; configs: unknown[] }>(cookie, "GET", "/api/ai/providers");
+    const catalogIds = prov.body.ok ? prov.body.data.catalog.map((c) => c.id) : [];
     report(
-      prov.status === 200 && prov.body.ok && prov.body.data.catalog.length >= 3,
-      "GET /api/ai/providers → catalog present",
-      `${prov.body.ok ? `${prov.body.data.catalog.length} catalog entries` : "fail"}`
+      prov.status === 200 && prov.body.ok && catalogIds.length === 11 &&
+        ["gemini", "openrouter", "ollama", "openai", "anthropic", "deepseek", "mistral", "groq", "xai", "together", "custom"]
+          .every((id) => catalogIds.includes(id)),
+      "GET /api/ai/providers → Phase-11 mesh catalog (11 providers incl. custom)",
+      `${catalogIds.length} entries`
+    );
+    report(
+      prov.body.ok && prov.body.data.catalog.every((c) => c.status === "shipped"),
+      "every mesh provider ships a real adapter (no reserved placeholders)"
     );
 
     console.log("\nworkflows create → execute → trace:");

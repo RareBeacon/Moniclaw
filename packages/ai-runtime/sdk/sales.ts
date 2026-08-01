@@ -435,11 +435,12 @@ class SalesSearchesClient {
 class SalesEmailClient {
   constructor(private readonly client: MoniClawClient) {}
 
-  /** Connections + the SES region catalog (render the same presets as the UI). */
+  /** Connections + the SES region catalog + SMTP presets (render the same connect flow as the UI). */
   list() {
     return this.client.request<{
       connections: EmailConnectionDto[];
       sesRegions: Array<{ region: string; smtpHost: string }>;
+      smtpPresets: Array<{ id: string; label: string; host: string; port: number; secure: boolean; hint: string }>;
     }>("GET", "/api/sales/email/connections");
   }
 

@@ -212,6 +212,56 @@ const smtpHostSchema = z
   .regex(/^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/, "Enter a valid hostname (dots and dashes allowed).")
   .refine((h) => !h.includes(".."), "Enter a valid hostname.");
 
+/**
+ * First-class SMTP presets (Gmail & co. travel the SAME SMTP code path —
+ * "Gmail connect" is guidance + correct defaults, not a hidden transport).
+ * Single source for the UI preset picker, the REST catalog and the
+ * port/TLS sanity check below — three consumers, one definition.
+ */
+export interface SmtpPreset {
+  id: "gmail" | "outlook" | "zoho";
+  label: string;
+  host: string;
+  port: number;
+  secure: boolean; // true = implicit TLS (:465); false = STARTTLS (:587)
+  hint: string;
+}
+
+export const SMTP_PRESETS: readonly SmtpPreset[] = [
+  {
+    id: "gmail",
+    label: "Gmail / Google Workspace",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    hint: "Enable 2-Step Verification on the Google account, then create an App Password (myaccount.google.com/apppasswords) — your Gmail address is the SMTP username.",
+  },
+  {
+    id: "outlook",
+    label: "Outlook / Office 365",
+    host: "smtp.office365.com",
+    port: 587,
+    secure: false,
+    hint: "STARTTLS on :587. If your tenant blocks basic SMTP auth, create an app password in account security settings.",
+  },
+  {
+    id: "zoho",
+    label: "Zoho Mail",
+    host: "smtp.zoho.com",
+    port: 465,
+    secure: true,
+    hint: "Use your Zoho password, or an app-specific password if two-factor is on.",
+  },
+] as const;
+
+/** host → the port/TLS combinations that host actually serves. */
+const KNOWN_SMTP_ENDPOINTS: Record<string, Array<{ port: number; secure: boolean }>> = {
+  "smtp.gmail.com": [{ port: 465, secure: true }, { port: 587, secure: false }],
+  "smtp.office365.com": [{ port: 587, secure: false }],
+  "smtp-mail.outlook.com": [{ port: 587, secure: false }],
+  "smtp.zoho.com": [{ port: 465, secure: true }, { port: 587, secure: false }],
+};
+
 const emailConnectionBase = z.object({
   provider: z.enum(["SMTP", "AMAZON_SES"]).default("SMTP"),
   label: z.string().trim().min(2).max(80),
@@ -236,6 +286,25 @@ export const emailConnectionCreateApiSchema = emailConnectionBase.superRefine((v
     if (!v.smtpUsername || !v.password) {
       ctx.addIssue({ code: "custom", path: ["password"], message: "SES requires its SMTP username and password." });
     }
+    return;
+  }
+  // Known consumer hosts: refuse combinations that can never work, with the
+  // exact fix — better a sharp error here than a dead connection later.
+  const known = KNOWN_SMTP_ENDPOINTS[v.smtpHost.toLowerCase()];
+  if (known && !known.some((k) => k.port === v.smtpPort && k.secure === v.smtpSecure)) {
+    const combos = known.map((k) => `port ${k.port}${k.secure ? " (SSL/TLS)" : " (STARTTLS)"}`).join(" or ");
+    ctx.addIssue({
+      code: "custom",
+      path: ["smtpPort"],
+      message: `${v.smtpHost} only accepts ${combos}.`,
+    });
+  }
+  if (v.smtpHost.toLowerCase() === "smtp.gmail.com" && v.smtpUsername && v.smtpUsername !== v.senderEmail) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["smtpUsername"],
+      message: "Gmail's SMTP username is the Gmail address itself (same as the From address).",
+    });
   }
 });
 

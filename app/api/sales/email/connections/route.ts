@@ -1,14 +1,14 @@
 import { createConnection, listConnections } from "@/lib/email/connections";
 import { errorResponse, guard, isGuarded, ok, readJson } from "@/lib/sales/api";
-import { emailConnectionCreateApiSchema, SES_REGIONS, sesSmtpHost } from "@/lib/validations/sales";
+import { emailConnectionCreateApiSchema, SES_REGIONS, SMTP_PRESETS, sesSmtpHost } from "@/lib/validations/sales";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/sales/email/connections — list workspace email identities.
  * NEVER exposes credentials (passwordEnc is never selected).
- * Response includes the SES region catalog + host presets so API/SDK
- * clients can render the same first-class SES connect flow as the UI.
+ * Response includes the SES region catalog + SMTP presets (Gmail & co.) so
+ * API/SDK clients render the exact same connect flow as the dashboard.
  */
 export async function GET(request: Request) {
   const g = await guard(request, "sales.read");
@@ -18,6 +18,7 @@ export async function GET(request: Request) {
     return ok({
       connections,
       sesRegions: SES_REGIONS.map((region) => ({ region, smtpHost: sesSmtpHost(region) })),
+      smtpPresets: SMTP_PRESETS,
     });
   } catch (err) {
     return errorResponse(err);

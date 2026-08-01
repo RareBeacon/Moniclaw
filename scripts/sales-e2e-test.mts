@@ -410,8 +410,12 @@ async function main() {
       report(!!connectionId && created.connection.status === "UNVERIFIED" && created.connection.isDefault,
         "email connection created (201, UNVERIFIED, first=default)");
 
-      const listed = dataOf<{ connections: Array<Record<string, unknown>>; sesRegions: Array<{ region: string; smtpHost: string }> }>(
+      const listed = dataOf<{ connections: Array<Record<string, unknown>>; sesRegions: Array<{ region: string; smtpHost: string }>; smtpPresets: Array<{ id: string; host: string; port: number; secure: boolean }> }>(
         await api(cookie, "GET", "/api/sales/email/connections")
+      );
+      report(
+        listed.smtpPresets.some((p) => p.id === "gmail" && p.host === "smtp.gmail.com" && p.port === 465 && p.secure),
+        "Gmail preset exposed to API/SDK clients (:465 SSL)"
       );
       report(
         listed.connections.length === 1 &&

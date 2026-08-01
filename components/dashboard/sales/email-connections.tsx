@@ -11,7 +11,7 @@ import {
   updateEmailConnectionAction,
   verifyEmailConnectionAction,
 } from "@/lib/actions/sales";
-import { SES_REGIONS, sesSmtpHost } from "@/lib/validations/sales";
+import { SES_REGIONS, SMTP_PRESETS, sesSmtpHost } from "@/lib/validations/sales";
 import { Notice, PendingButton, fieldClass, selectClass, useSalesAction, type SalesState } from "./shared";
 import { Button } from "@/components/ui/button";
 
@@ -203,6 +203,27 @@ function ConnectForm() {
   const { state, pending, run } = useSalesAction(createEmailConnectionAction, () => router.refresh());
   const [provider, setProvider] = React.useState<"AMAZON_SES" | "SMTP">("AMAZON_SES");
   const [region, setRegion] = React.useState<string>("eu-west-1");
+  // SMTP presets (Gmail & co. run the same SMTP path — presets only prefill
+  // the endpoint); "custom" leaves every field editable.
+  const [preset, setPreset] = React.useState<"gmail" | "outlook" | "zoho" | "custom">("gmail");
+  const presetRow = SMTP_PRESETS.find((p) => p.id === preset);
+  const [smtpHost, setSmtpHost] = React.useState<string>(SMTP_PRESETS[0].host);
+  const [smtpPort, setSmtpPort] = React.useState<number>(SMTP_PRESETS[0].port);
+  const [smtpSecure, setSmtpSecure] = React.useState<boolean>(SMTP_PRESETS[0].secure);
+
+  const applyPreset = (id: typeof preset) => {
+    setPreset(id);
+    const row = SMTP_PRESETS.find((p) => p.id === id);
+    if (row) {
+      setSmtpHost(row.host);
+      setSmtpPort(row.port);
+      setSmtpSecure(row.secure);
+    } else {
+      setSmtpHost("");
+      setSmtpPort(587);
+      setSmtpSecure(false);
+    }
+  };
 
   return (
     <form
@@ -216,9 +237,9 @@ function ConnectForm() {
           label: String(fd.get("label") || ""),
           senderName: String(fd.get("senderName") || "") || null,
           senderEmail: String(fd.get("senderEmail") || ""),
-          smtpHost: provider === "AMAZON_SES" ? sesSmtpHost(selectedRegion) : String(fd.get("smtpHost") || ""),
-          smtpPort: provider === "AMAZON_SES" ? 587 : Number(fd.get("smtpPort") || 587),
-          smtpSecure: provider === "AMAZON_SES" ? false : fd.get("smtpSecure") === "on",
+          smtpHost: provider === "AMAZON_SES" ? sesSmtpHost(selectedRegion) : smtpHost,
+          smtpPort: provider === "AMAZON_SES" ? 587 : smtpPort,
+          smtpSecure: provider === "AMAZON_SES" ? false : smtpSecure,
           smtpUsername: String(fd.get("smtpUsername") || "") || null,
           password: String(fd.get("password") || "") || null,
           region: provider === "AMAZON_SES" ? selectedRegion : null,
@@ -259,8 +280,31 @@ function ConnectForm() {
         ) : (
           <>
             <div>
+              <label className="text-xs font-medium text-muted-foreground" htmlFor="ec-preset">Mail service</label>
+              <select
+                id="ec-preset"
+                className={selectClass}
+                value={preset}
+                onChange={(e) => applyPreset(e.target.value as typeof preset)}
+              >
+                {SMTP_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+                <option value="custom">Other SMTP server…</option>
+              </select>
+            </div>
+            <div>
               <label className="text-xs font-medium text-muted-foreground" htmlFor="ec-host">SMTP host</label>
-              <input id="ec-host" name="smtpHost" required placeholder="smtp.gmail.com" className={fieldClass} />
+              <input
+                id="ec-host"
+                name="smtpHost"
+                required
+                placeholder="smtp.gmail.com"
+                className={fieldClass}
+                value={smtpHost}
+                onChange={(e) => { setSmtpHost(e.target.value); setPreset("custom"); }}
+                readOnly={preset !== "custom"}
+              />
             </div>
           </>
         )}
@@ -272,17 +316,46 @@ function ConnectForm() {
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="ec-port">Port</label>
-              <input id="ec-port" name="smtpPort" type="number" min={1} max={65535} defaultValue={587} className={fieldClass} />
+              <input
+                id="ec-port"
+                name="smtpPort"
+                type="number"
+                min={1}
+                max={65535}
+                className={fieldClass}
+                value={smtpPort}
+                onChange={(e) => { setSmtpPort(Number(e.target.value)); setPreset("custom"); }}
+                readOnly={preset !== "custom"}
+              />
             </div>
             <label className="mt-5 flex items-center gap-2 text-xs text-muted-foreground">
-              <input name="smtpSecure" type="checkbox" className="h-4 w-4 rounded border-input" />
+              <input
+                name="smtpSecure"
+                type="checkbox"
+                className="h-4 w-4 rounded border-input"
+                checked={smtpSecure}
+                onChange={(e) => { setSmtpSecure(e.target.checked); setPreset("custom"); }}
+                disabled={preset !== "custom"}
+              />
               SSL/TLS (:465)
             </label>
           </div>
         )}
+        {provider === "SMTP" && presetRow && (
+          <p className="sm:col-span-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs leading-5 text-muted-foreground">
+            {presetRow.hint}
+          </p>
+        )}
         <div>
           <label className="text-xs font-medium text-muted-foreground" htmlFor="ec-sender-email">From address (verified identity)</label>
-          <input id="ec-sender-email" name="senderEmail" type="email" required placeholder="you@yourcompany.com" className={fieldClass} />
+          <input
+            id="ec-sender-email"
+            name="senderEmail"
+            type="email"
+            required
+            placeholder={provider === "SMTP" && preset === "gmail" ? "you@gmail.com" : "you@yourcompany.com"}
+            className={fieldClass}
+          />
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground" htmlFor="ec-sender-name">Sender name (optional)</label>
@@ -292,11 +365,21 @@ function ConnectForm() {
           <label className="text-xs font-medium text-muted-foreground" htmlFor="ec-username">
             {provider === "AMAZON_SES" ? "SES SMTP username" : "SMTP username"}
           </label>
-          <input id="ec-username" name="smtpUsername" autoComplete="off" placeholder={provider === "AMAZON_SES" ? "AKIA…" : "you@yourcompany.com"} className={fieldClass} />
+          <input
+            id="ec-username"
+            name="smtpUsername"
+            autoComplete="off"
+            placeholder={provider === "AMAZON_SES" ? "AKIA…" : provider === "SMTP" && preset === "gmail" ? "you@gmail.com" : "you@yourcompany.com"}
+            className={fieldClass}
+          />
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground" htmlFor="ec-password">
-            {provider === "AMAZON_SES" ? "SES SMTP password" : "SMTP password / app password"}
+            {provider === "AMAZON_SES"
+              ? "SES SMTP password"
+              : provider === "SMTP" && preset === "gmail"
+                ? "Google App Password (16 characters)"
+                : "SMTP password / app password"}
           </label>
           <input id="ec-password" name="password" type="password" autoComplete="new-password" placeholder="Stored encrypted — never shown again" className={fieldClass} />
         </div>
