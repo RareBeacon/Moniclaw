@@ -98,9 +98,12 @@ async function main() {
       headers: { Cookie: sessionCookie },
     });
     const settingsHtml = await settingsRes.text();
+    // React splits interpolated text nodes with <!-- --> markers — strip
+    // them before asserting on rendered copy.
+    const settingsText = settingsHtml.replace(/<!-- -->/g, "");
     report(settingsRes.status === 200, "GET /dashboard/settings → 200", `→ ${settingsRes.status}`);
     report(/Access (&amp;|&) launch seats/.test(settingsHtml), "seats card renders");
-    const capMatch = settingsHtml.match(/of (\d+) launch seats remain/);
+    const capMatch = settingsText.match(/of (\d+) launch seats remain/);
     report(!!capMatch, "seat cap displayed", capMatch ? `cap ${capMatch[1]}` : "cap line missing");
     report(/launch seats remain/.test(settingsHtml) && /progressbar/.test(settingsHtml), "seat progress meter present");
 

@@ -76,7 +76,7 @@ export async function guard(
     const verdict = await rateLimit(key, policy.limit, policy.windowMs);
     if (!verdict.success) {
       return {
-        response: fail(429, "rate_limited", "Too many requests — try again later.", {
+        response: fail(429, "rate_limited", `Too many requests — retry in ${verdict.retryAfterSeconds}s.`, {
           retryAfterSeconds: verdict.retryAfterSeconds,
         }),
       };
