@@ -174,6 +174,7 @@ export function ProviderConfigRow({
     healthStatus: string | null;
     healthCheckedAt: string | null;
     healthError: string | null;
+    rateLimitedUntil: string | null;
   };
 }) {
   const [testing, setTesting] = React.useState(false);
@@ -230,6 +231,14 @@ export function ProviderConfigRow({
         </div>
 
         <div className="flex items-center gap-2">
+          {config.rateLimitedUntil && new Date(config.rateLimitedUntil).getTime() > Date.now() && (
+            <span
+              title={`Rate-limited by the provider — resting from rotation until ${new Date(config.rateLimitedUntil).toLocaleString()}. Other keys take the traffic meanwhile.`}
+              className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-500"
+            >
+              Resting (429)
+            </span>
+          )}
           <HealthBadge status={config.healthStatus} error={config.healthError} />
           <Button type="button" variant="outline" size="sm" onClick={test} disabled={testing}>
             {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Test"}

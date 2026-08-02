@@ -50,6 +50,18 @@ export interface ProviderConfigSource {
   resolve(workspaceId: string): Promise<ResolvedProviderConfig[]>;
   /** Persist health probe outcome (no-op for env/synthetic). */
   markHealth(configId: string | null, ok: boolean, error?: string): Promise<void>;
+  /**
+   * Optional — an attempt against this config exhausted with HTTP 429.
+   * Implementations rest the key (rotate it out of resolve() until the
+   * window passes) and alert the workspace exactly once per episode.
+   * `retryAfterSeconds` is the provider's own hint when it sent one.
+   * No-op for env/synthetic configs (configId null).
+   */
+  markRateLimited?(
+    configId: string | null,
+    retryAfterSeconds: number | null,
+    error: string
+  ): Promise<void>;
 }
 
 export interface UsageSink {
@@ -345,6 +357,7 @@ export class ModelRouter {
             usage: { latencyMs: Date.now() - started },
             errorCode: error.kind,
           });
+          await this.noteRateLimit(cfg, error);
           if (!error.retryable) break;
           if (attempt < this.maxAttempts) {
             await sleep(this.baseBackoff * 2 ** (attempt - 1) + Math.random() * 80);
@@ -396,6 +409,25 @@ export class ModelRouter {
       errorCode: error.kind,
     });
     await this.source.markHealth(cfg.configId, false, `${error.kind}: ${error.message}`);
+    await this.noteRateLimit(cfg, error);
+  }
+
+  /**
+   * A 429 means "this key rests now": hand the source the provider's own
+   * rest hint (or null → implementation default) so rotation + the
+   * workspace alert happen in exactly one place for chat, stream, embed.
+   */
+  private async noteRateLimit(cfg: ResolvedProviderConfig, error: ProviderError) {
+    if (error.kind !== "rate_limit" || !this.source.markRateLimited) return;
+    try {
+      await this.source.markRateLimited(
+        cfg.configId,
+        error.retryAfterSeconds ?? null,
+        error.message.slice(0, 200)
+      );
+    } catch (err) {
+      console.warn("[router] markRateLimited failed:", (err as Error).message);
+    }
   }
 }
 

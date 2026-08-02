@@ -18,6 +18,7 @@
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { providerConfigSource } from "../lib/ai/provider-config-source";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 /** When the deployment wires a platform fallback key (OPENROUTER_API_KEY /
@@ -223,6 +224,90 @@ async function main() {
       prov.body.ok && prov.body.data.catalog.every((c) => c.status === "shipped"),
       "every mesh provider ships a real adapter (no reserved placeholders)"
     );
+
+    // ── Multi-key rotation & rate-limit alerts (Phase 11+12 hardening) ──
+    // Drives the REAL production PrismaProviderConfigSource (the exact class
+    // the deployed router consumes). Keys are seeded with locally-invalid
+    // ciphertext on purpose: a deployment's AUTH_SECRET never leaves Vercel,
+    // and the resolver must DEGRADE on ciphertext it can't decrypt rather
+    // than kill the chain — that resilience is asserted first.
+    console.log("\nmulti-key rotation & rate-limit alerts:");
+    const keyA = await db.aiProviderConfig.create({
+      data: {
+        workspaceId: workspaceId!,
+        provider: "OPENROUTER",
+        label: `e2e-key-a-${stamp}`,
+        apiKeyEnc: "e2e:undecryptable-a",
+        enabled: true,
+        priority: 5,
+      },
+    });
+    await db.aiProviderConfig.create({
+      data: {
+        workspaceId: workspaceId!,
+        provider: "OPENROUTER",
+        label: `e2e-key-b-${stamp}`,
+        apiKeyEnc: "e2e:undecryptable-b",
+        enabled: true,
+        priority: 6,
+      },
+    });
+    report(true, "two same-provider keys seeded (multi-key per platform)");
+
+    const source = providerConfigSource();
+    const resolved0 = await source.resolve(workspaceId!);
+    const seeded = (r: { configId: string | null }) => r.configId === keyA.id;
+    report(
+      !resolved0.some(seeded),
+      "resolve() degrades an undecryptable key instead of breaking the chain"
+    );
+    report(
+      resolved0.some((r) => r.source === "env" && r.provider === "openrouter"),
+      "platform env fallback resumes while no usable workspace key exists"
+    );
+
+    // Router hook → rest marker + immediate alert (deduped), via REAL impl.
+    await source.markRateLimited(keyA.id, 120, "e2e simulated 429");
+    const restedRow = await db.aiProviderConfig.findUnique({ where: { id: keyA.id } });
+    const restMs = restedRow?.rateLimitedUntil ? restedRow.rateLimitedUntil.getTime() - Date.now() : -1;
+    report(restMs > 100_000 && restMs <= 120_000, "429 → key rested for the provider's own window", `${Math.round(restMs / 1000)}s`);
+    const notes1 = await db.notification.findMany({
+      where: { workspaceId: workspaceId!, dedupKey: `ai.rate-limited:${keyA.id}` },
+    });
+    report(
+      notes1.length === 1 && notes1[0]!.readAt === null && notes1[0]!.kind === "ai.provider.rate_limited",
+      "workspace alerted immediately (Notification row, unread)"
+    );
+    await source.markRateLimited(keyA.id, 120, "repeat within same episode");
+    const notes2 = await db.notification.count({
+      where: { workspaceId: workspaceId!, dedupKey: `ai.rate-limited:${keyA.id}` },
+    });
+    report(notes2 === 1, "flapping key cannot spam the bell (unread-dedup)");
+
+    const resolved1 = await source.resolve(workspaceId!);
+    report(!resolved1.some(seeded), "rested key rotates OUT of resolution");
+    const fallbackStill = resolved1.filter((r) => r.source === "env");
+    report(fallbackStill.length >= 1, "env fallback keeps serving while the key rests");
+
+    // Recovery: a key that serves again re-enters rotation automatically.
+    await source.markHealth(keyA.id, true);
+    const recovered = await db.aiProviderConfig.findUnique({ where: { id: keyA.id } });
+    report(recovered?.rateLimitedUntil === null, "healthy key re-enters rotation (rest marker cleared)");
+
+    // The bell surface: REST list + mark-read.
+    const bell1 = await api<{ notifications: Array<{ title: string; readAt: string | null }>; unreadCount: number }>(
+      cookie, "GET", "/api/notifications"
+    );
+    report(
+      bell1.status === 200 && bell1.body.ok &&
+        bell1.body.data.unreadCount >= 1 &&
+        bell1.body.data.notifications.some((n) => n.title.includes(`e2e-key-a-${stamp}`)),
+      "GET /api/notifications shows the alert to the workspace"
+    );
+    const markAll = await api<{ marked: number }>(cookie, "POST", "/api/notifications", {});
+    report(markAll.body.ok && markAll.body.data.marked >= 1, "mark-all-read works");
+    const bell2 = await api<{ unreadCount: number }>(cookie, "GET", "/api/notifications");
+    report(bell2.body.ok && bell2.body.data.unreadCount === 0, "unread count clears");
 
     console.log("\nworkflows create → execute → trace:");
     const wfDef = {

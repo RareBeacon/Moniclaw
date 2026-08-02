@@ -171,6 +171,7 @@ model Workspace {
   // AI Runtime (Phase 3)
   aiProviderConfigs  AiProviderConfig[]
   aiSettings         AiWorkspaceSettings?
+  notifications      Notification[]
   promptTemplates    PromptTemplate[]
   memoryRecords      MemoryRecord[]
   aiConversations    AiConversation[]
@@ -628,6 +629,9 @@ model AiProviderConfig {
   healthStatus    String? // "ok" | "error" after last test
   healthCheckedAt DateTime?
   healthError     String?
+  // Multi-key rotation: set when the provider answers 429. resolve() skips
+  // the key until this passes; a successful call clears it (markHealth ok).
+  rateLimitedUntil DateTime?
   createdById     String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -638,6 +642,28 @@ model AiProviderConfig {
   @@unique([workspaceId, label])
   @@index([workspaceId, enabled, priority])
   @@map("ai_provider_configs")
+}
+
+/**
+ * In-app operational alerts (multi-key rate-limit rotations first; reusable
+ * for other planes later). Dedup: producers skip creating while an UNREAD
+ * alert with the same dedupKey exists, so a flapping key can't spam the bell.
+ */
+model Notification {
+  id          String    @id @default(uuid())
+  workspaceId String
+  kind        String    // "ai.provider.rate_limited" | …
+  title       String
+  body        String
+  dedupKey    String?
+  href        String?   // deep link for the bell item (e.g. /dashboard/settings/api-keys)
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, readAt, createdAt])
+  @@map("notifications")
 }
 
 /// Per-workspace AI tunables: defaults + memory/knowledge/tool limits.

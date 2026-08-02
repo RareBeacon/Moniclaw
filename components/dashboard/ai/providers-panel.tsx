@@ -44,6 +44,11 @@ export async function AiProvidersPanel({ workspaceId }: { workspaceId: string })
             {configs.filter((c) => c.enabled).length} of {configs.length} enabled
           </span>
         </div>
+        <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+          Add as many keys per platform as you like — traffic rotates to the
+          next one automatically the moment a key hits its provider limit, and
+          the bell alerts you immediately.
+        </p>
 
         {configs.length === 0 ? (
           <div className="mt-4">
@@ -70,6 +75,7 @@ export async function AiProvidersPanel({ workspaceId }: { workspaceId: string })
                   healthStatus: config.healthStatus,
                   healthCheckedAt: config.healthCheckedAt?.toISOString() ?? null,
                   healthError: config.healthError,
+                  rateLimitedUntil: config.rateLimitedUntil?.toISOString() ?? null,
                 }}
               />
             ))}

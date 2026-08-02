@@ -22,18 +22,21 @@ export class ProviderError extends Error {
   readonly provider: string;
   readonly retryable: boolean;
   readonly status?: number;
+  /** Provider-supplied rest hint on 429s (parsed from Retry-After). */
+  readonly retryAfterSeconds?: number;
 
   constructor(
     kind: ProviderErrorKind,
     provider: string,
     message: string,
-    opts: { status?: number; cause?: unknown } = {}
+    opts: { status?: number; cause?: unknown; retryAfterSeconds?: number } = {}
   ) {
     super(message, { cause: opts.cause });
     this.name = "ProviderError";
     this.kind = kind;
     this.provider = provider;
     this.status = opts.status;
+    this.retryAfterSeconds = opts.retryAfterSeconds;
     this.retryable =
       kind === "rate_limit" ||
       kind === "timeout" ||

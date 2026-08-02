@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/workspace";
 import { Logo } from "@/components/shared/logo";
 import { SideNav } from "@/components/dashboard/side-nav";
 import { UserMenu } from "@/components/dashboard/user-menu";
+import { NotificationBell } from "@/components/dashboard/notification-bell";
 import { CreateWorkspace } from "@/components/dashboard/create-workspace";
 
 export const dynamic = "force-dynamic";
@@ -101,12 +102,15 @@ export default async function DashboardLayout({
               </span>
             </p>
           </div>
-          <UserMenu
-            name={name}
-            email={user.email ?? ""}
-            image={user.image}
-            initials={initials}
-          />
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <UserMenu
+              name={name}
+              email={user.email ?? ""}
+              image={user.image}
+              initials={initials}
+            />
+          </div>
         </header>
         <main className="flex-1 px-4 py-8 sm:px-6 lg:px-10">
           {/* Mobile nav */}

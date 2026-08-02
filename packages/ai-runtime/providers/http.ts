@@ -15,10 +15,18 @@ export async function httpError(res: Response, providerId: string): Promise<Prov
   } catch {
     detail = res.statusText;
   }
+  // Retry-After: seconds (the only form every vendor here emits). Surfaced
+  // so the router can rest the key for exactly the provider's window.
+  let retryAfterSeconds: number | undefined;
+  const retryAfter = res.headers.get("retry-after");
+  if (retryAfter) {
+    const parsed = Number(retryAfter);
+    if (Number.isFinite(parsed) && parsed > 0) retryAfterSeconds = Math.ceil(parsed);
+  }
   return new ProviderError(
     kindFromStatus(res.status),
     providerId,
     `${res.status} ${detail}`,
-    { status: res.status }
+    { status: res.status, retryAfterSeconds }
   );
 }
