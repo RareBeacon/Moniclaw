@@ -638,6 +638,14 @@ export class WorkerOrchestrator implements DelegationHandle {
     } else {
       await this.finishRun(run, "FAILED", output, "Plan execution failed — see trace.", "execution_failed", snapshot.steps, snapshot.tokens);
       await events.append({ runId: run.id, type: "run_failed", message: "Run failed during execution.", payload: {} });
+      // The thrown-error path (abort) audits every failure — a plan that
+      // executes but ends must reach the audit trail exactly the same way.
+      await this.deps.audit.log({
+        workspaceId: run.workspaceId, actorId: null,
+        action: "agent.run.failed",
+        target: run.agentId,
+        metadata: { runId: run.id, class: "execution_failed", steps: snapshot.steps, tokens: snapshot.tokens },
+      });
     }
     try { meter.assertWithin(); } catch (err) {
       // Post-hoc budget breach: mark the run failed even though steps finished.
