@@ -533,7 +533,10 @@ async function main() {
     // synthetic domain, so an "honest failure" is still acceptable offline).
     const providerWired = Boolean(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
     let finalStatus = "";
-    const polls = providerWired ? 45 : 30;
+    // A live research run on free-tier models (website fetch + multi-step
+    // generation + serverless cold starts) can legitimately exceed two
+    // minutes; the dispatch route itself allows 300s. Wait it out.
+    const polls = providerWired ? 100 : 30;
     for (let i = 0; i < polls; i++) {
       const st = dataOf<{ researchStatus: string }>(await api(cookie, "GET", `/api/sales/companies/${companyId}/research`));
       finalStatus = st.researchStatus;
