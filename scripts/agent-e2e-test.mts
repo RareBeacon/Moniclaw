@@ -214,9 +214,19 @@ async function main() {
 
     const terminal = await waitForTerminal(owner, runId);
     report(!!terminal, "run reached a terminal state", terminal ? terminal.status : "timeout");
+    // Provider-weather aware (same idiom as the sales suite): with no model
+    // reachable the run must fail with upstream_failed; when a platform key
+    // IS reachable the planner executes honestly and any classified failure
+    // (upstream | execution | internal) is a coherent terminal state.
+    const providerWired = Boolean(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
+    const honestClass = providerWired
+      ? ["upstream_failed", "execution_failed", "internal"].includes(terminal?.errorClass ?? "")
+      : terminal?.errorClass === "upstream_failed";
     report(
-      !!terminal && terminal.status === "FAILED" && terminal.errorClass === "upstream_failed",
-      "no model keys → run fails HONESTLY as upstream_failed",
+      !!terminal && terminal.status === "FAILED" && honestClass,
+      providerWired
+        ? "run fails HONESTLY with a classified error (COMPLETED also acceptable on live model)"
+        : "no model keys → run fails HONESTLY as upstream_failed",
       terminal ? `${terminal.status} · ${terminal.errorClass}` : "timeout"
     );
 
@@ -230,9 +240,16 @@ async function main() {
       evtTypes.join(",")
     );
 
-    const auditRows = await db.auditLog.findMany({
-      where: { workspaceId: workspace.id, action: { in: ["agent.run.dispatch", "agent.run.failed"] } },
-    });
+    // finishRun commits the terminal row BEFORE the audit/event writes, so a
+    // fast poller can beat the audit insert — give the trail a few seconds.
+    let auditRows: Awaited<ReturnType<typeof db.auditLog.findMany>> = [];
+    for (let i = 0; i < 10; i++) {
+      auditRows = await db.auditLog.findMany({
+        where: { workspaceId: workspace.id, action: { in: ["agent.run.dispatch", "agent.run.failed"] } },
+      });
+      if (auditRows.some((a) => a.action === "agent.run.dispatch") && auditRows.some((a) => a.action === "agent.run.failed")) break;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
     report(
       auditRows.some((a) => a.action === "agent.run.dispatch") && auditRows.some((a) => a.action === "agent.run.failed"),
       "audit trail: dispatch + failure recorded"

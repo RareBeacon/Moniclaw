@@ -192,6 +192,7 @@ export class AgentRunPrismaRepository implements AgentRunRepository {
         ...(patch.errorClass !== undefined ? { errorClass: patch.errorClass } : {}),
         ...(patch.stepsExecuted !== undefined ? { stepsExecuted: patch.stepsExecuted } : {}),
         ...(patch.tokensUsed !== undefined ? { tokensUsed: patch.tokensUsed } : {}),
+        ...(patch.creditsUsed !== undefined ? { creditsUsed: patch.creditsUsed } : {}),
       },
     });
   }
