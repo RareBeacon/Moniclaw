@@ -28,6 +28,8 @@
 
 ## Phase 7 — Multi-Agent Sales Organization
 
+> **Status 2026-08-02: v1 LANDED** (`eacd737`) — teams on the delegation engine: roster, briefing, delegation-gated runs, lineage, REST/SDK/UI. Remaining vision (org-chart autonomy, cross-team learning) stays open.
+
 **Vision.** From single workers to an *orchestrated org*: a researcher drafts
 a target brief, a writer produces outreach, a reviewer agent checks policy &
 tone, the human approves, a sender agent delivers — all coordinated under one
@@ -62,6 +64,8 @@ trail, zero human intervention except the send approval.
 
 ## Phase 8 — Marketplace (Agents, Tools, Templates)
 
+> **Status 2026-08-02: v1 LANDED** (`1c47659`) — curated first-party template catalog with permission manifests + SHADOW installs (REST/SDK/UI). Revenue share + community moderation remain deferred to the billing rails.
+
 **Vision.** A catalog where builders publish agents / tools / campaign
 templates and teams install them with explicit, reviewable permissions.
 
@@ -85,6 +89,8 @@ Phase 8 ships declarative packages only (prompts, graphs, schemas).
 
 ## Phase 9 — Enterprise
 
+> **Status 2026-08-02: v1 LANDED** (`ee1ea48`) — durable cross-instance rate limiting, 20-seat launch cap + seats meter, streamed audit export. SSO/SCIM and on-prem remain open.
+
 **Vision.** The same platform, deployable and governable for large orgs.
 
 **Workstreams**
@@ -105,6 +111,8 @@ Phase 8 ships declarative packages only (prompts, graphs, schemas).
 
 ## Phase 10 — Billing & Metering
 
+> **Status 2026-08-02: v1 LANDED** (`c97b4a5`) — credit accrual + monthly plan gate with honest 402s, Duo launch plan, plan agent caps, real usage gauges. Payments (Stripe) stay deferred — no card is collected.
+
 **Vision.** Usage-based billing built on the metering the platform already
 records (every run stamps `tokensUsed`; every AI call rows into `AiUsage`).
 
@@ -124,6 +132,8 @@ founders); no usage caps *below* current free behavior — grandfathering.
 ---
 
 ## Phase 11 — MoniClaw AI Cloud
+
+> **Status 2026-08-02: v1 LANDED** (`9680afa`, `38e11f6`) — 11-provider mesh + custom endpoints, universal key vault, multi-key rotation with immediate rate-limit bell alerts. Virtual keys/quotas/caching and managed GPU inference remain open.
 
 **Vision.** One AI gateway for the platform: unified key management, caching,
 broader provider mesh, and a hosted inference tier.
@@ -146,6 +156,8 @@ evaluation).
 ---
 
 ## Phase 12 — V1.0 GA & Stabilization
+
+> **Status 2026-08-02: v1 LANDED — see docs/PHASE-7-12-DEPLOYMENT.md — full prod verification battery green. SLO/status page, self-serve import, docs portal remain open.
 
 **Vision.** Everything shipped, hardened, and contractually stable.
 

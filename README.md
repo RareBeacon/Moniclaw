@@ -248,6 +248,34 @@ imports in the orchestrator.
   requires the code (constant-time compare): “only us” mode without touching
   the allowlist code.
 
+### Phases 7–12 (complete — see docs/PHASE-7-12-DEPLOYMENT.md)
+
+- **Multi-agent teams (P7)** — named teams on the delegation engine:
+  leader runs with a composed team briefing, delegation gated by
+  `allowDelegation` (honest 403 otherwise), team-filtered runs lineage,
+  `/dashboard/teams`, SDK `agents.teams`, full audit trail.
+- **Worker template catalog (P8)** — 8 curated first-party packages
+  (`/dashboard/templates`): every card shows the resolved permission
+  manifest + budget caps before install; installs mint real SHADOW workers
+  with template lineage; SDK `templates`; manifests are unit-validated
+  against the orchestrator's own resolvers.
+- **20-seat capacity & governance (P9)** — durable cross-instance rate
+  limiting (atomic Postgres buckets), `AUTH_REGISTRATION_MAX_USERS` seat
+  cap with a Settings meter, streamed NDJSON audit export, honest
+  `retry in Ns` 429s everywhere.
+- **Metering with teeth (P10)** — credits accrue on every terminal run
+  (`max(1, ⌈tokens/1000⌉)`), a monthly plan gate refuses root dispatches
+  with an honest 402 when the pool is spent, Duo launch plan (2 seats ·
+  5,000 credits · 10 agents), plan caps on agent creation. Still no card —
+  preview billing is honestly free.
+- **Universal AI gateway (P11)** — 11 providers + custom OpenAI-compatible
+  endpoints; Settings → API Keys vault; **multi-key rotation**: a 429 rests
+  the key (provider's Retry-After window), traffic rotates instantly, the
+  header bell alerts immediately (deduped), env fallbacks resume while all
+  keys rest.
+- **Connect any mailbox** — Gmail App-Password, Outlook, Zoho presets on the
+  verified SES/SMTP path (Sales → Settings → Email connections).
+
 ### Permission model (rank-based RBAC)
 
 `VIEWER < MEMBER < MANAGER < ADMIN < OWNER` — each capability declares a
