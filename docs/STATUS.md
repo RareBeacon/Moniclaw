@@ -2,6 +2,40 @@
 
 > Read this first in any new chat/session. Keep it short and true; the full
 > history lives in git and `docs/PHASE-*-DEPLOYMENT.md`.
+>
+> **HANDOVER (2026-08-02): The owner is continuing this project in a NEW
+> Arena.ai chat. This doc + git history are the durable project brain. The new
+> chat receives credentials via an owner paste; if this workspace is present
+> (`/home/user/moniclaw`, HEAD ≥ 4356d0f), continue here — otherwise clone
+> github.com/RareBeacon/Moniclaw. Restore ritual lives below. The owner calls
+> the product "Monitriarch" (business name); codebase/deploy stay MoniClaw —
+> no rename.
+>
+> **Next milestone — M8: owner seat management + manual paid-access gating.**
+> Owner brief (verbatim intent): product is for owner + partner (2 seats) plus
+> up to 18 paying users; NO invite flows; registration+login must be seamless;
+> owner grants/stops access from inside the product (admin UI, no billing
+> system) because the 3rd–20th users pay manually; when a payment elapses,
+> owner stops access.
+> Spec decisions (owner-approved via brief; refine in new chat if needed):
+> - Registration: drop the access-code gate; open registration, ≤20 accounts
+>   (honest at-capacity error). New accounts = accessStatus PENDING; first two
+>   / existing accounts backfill ACTIVE (owner+partner: no expiry).
+> - User model: accessStatus ACTIVE|PENDING|SUSPENDED + accessUntil DateTime?
+>   (null = no expiry) + accessNote (e.g. "paid 1 Aug, bank transfer").
+>   Expired accessUntil ⇒ treated as SUSPENDED (lazy check on session/login;
+>   cron sweep optional).
+> - Enforcement: session callback + server guard; PENDING/SUSPENDED/expired →
+>   APIs 403 `access_suspended`, UI shows honest "awaiting activation / access
+>   expired — contact the owner to renew" screen. No silent failures.
+> - Admin UI (OWNER role only): /dashboard/admin — user table (email, name,
+>   workspace, status, accessUntil, last sign-in), actions Approve (set
+>   expiry optional), Extend/set date, Suspend, Reactivate, Delete (frees
+>   seat), seats meter X/20. Every action audit-logged.
+> - Seat cap stays 20 (AUTH_REGISTRATION_MAX_USERS); AUTH_REGISTRATION_CODE
+>   env becomes obsolete (remove gate cleanly, keep .env.example truthful).
+> - Full bar: unit + e2e → commit → Neon migrate → prod deploy → prod E2E
+>   verify → update this STATUS.
 
 **As of 2026-08-02 (re-verified) · HEAD `5deff19`+ · https://moniclaw.vercel.app · all E2E batteries green.**
 
