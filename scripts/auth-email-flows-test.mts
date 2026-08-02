@@ -226,8 +226,8 @@ async function main() {
     });
     const dashHtml = await dashRes.text();
     report(
-      dashRes.status === 200 && dashHtml.includes("E2E Flows"),
-      "dashboard loads for the verified, reset account",
+      dashRes.status === 200 && dashHtml.includes("Awaiting activation"),
+      "pending account sees the honest awaiting-activation screen",
       `→ ${dashRes.status}`
     );
 

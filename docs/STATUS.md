@@ -66,11 +66,12 @@ Phases 1–12 v1 all production-deployed and verified. Latest cycle:
 ## Batteries at last full run (2026-08-02 post-incident, against final deploy)
 unit 267/267 · typecheck clean · smoke 84/84 · dashboard-routes all · auth-flow all · auth-email-flows all · ai-api 34/34 · agent 54/54 · sales all (incl. 21st-request 429) · governance all (incl. export 429 honesty) · 14 migrations applied, none pending.
 
-## M8 — Owner seat management + manual paid-access gating — **IMPLEMENTED (pending production verification)**
+## M8 — Owner seat management + manual paid-access gating — **SHIPPED (production verified 2026-08-02)**
 - Open signup now creates a **PENDING** account; the obsolete registration-code path and field are removed. The 20-account cap counts only non-deleted accounts, so an owner deletion immediately frees a seat.
 - Migration `20260802040000_owner_access_management` adds `AccessStatus` (`ACTIVE`, `PENDING`, `SUSPENDED`), optional expiry and owner note; it backfills the entire existing cohort to indefinite `ACTIVE` access.
 - Lazy expiry is authoritative: dashboard users see an explicit full-screen awaiting/expired/suspended state, while REST guard envelopes return `403 access_suspended`.
 - `/dashboard/admin` is an owner-cohort-only platform console with seat meter, account/workspace/status/expiry/last-sign-in data, approve, date, suspend, reactivate and delete controls. Every mutation is audit logged.
+- Production evidence: migration 15 applied; production build green; `auth-flow`, updated `auth-email-flows`, and `m8-access-e2e` all green (pending → approve → access, expiry screen, suspend/reactivate, delete).
 
 ## Deferred (agreed)
 Stripe, SSO/SCIM, Gmail OAuth (App Passwords work), revenue-share/moderation, hosted embeddings beyond Gemini/Ollama, hourly crons (Hobby), Supabase migration (token verified; Neon stays — see PHASE-7-12 report §6).
