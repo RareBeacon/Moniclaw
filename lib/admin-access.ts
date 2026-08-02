@@ -2,11 +2,15 @@ import { db } from "@/lib/db";
 import { audit, AUDIT_ACTIONS } from "@/lib/audit";
 import { getCurrentUser, getPrimaryWorkspace } from "@/lib/workspace";
 
+export function isConfiguredPlatformAdmin(email: string | null | undefined): boolean {
+  return !!email && email.trim().toLowerCase() === (process.env.PLATFORM_ADMIN_EMAIL ?? "").trim().toLowerCase();
+}
+
 /** Platform ownership is deliberately limited to the original indefinite-access
  * owner cohort; paid workspace owners never gain platform administration. */
 export async function requirePlatformOwner() {
   const user = await getCurrentUser();
-  if (!user || user.accessStatus !== "ACTIVE" || user.accessUntil) return null;
+  if (!user || user.accessStatus !== "ACTIVE" || user.accessUntil || (!isConfiguredPlatformAdmin(user.email) && !user.emailVerified)) return null;
   const primary = user ? await getPrimaryWorkspace(user.id) : null;
   if (!primary || primary.role !== "OWNER") return null;
   return { user, workspace: primary.workspace };

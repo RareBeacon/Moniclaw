@@ -10,6 +10,7 @@ import { NotificationBell } from "@/components/dashboard/notification-bell";
 import { CreateWorkspace } from "@/components/dashboard/create-workspace";
 import { AccessSuspended } from "@/components/dashboard/access-suspended";
 import { accessState } from "@/lib/access";
+import { isConfiguredPlatformAdmin } from "@/lib/admin-access";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +77,7 @@ export default async function DashboardLayout({
           <Logo />
         </div>
         <div className="mt-4 flex-1 overflow-y-auto pr-1">
-          <SideNav pendingApprovals={pendingApprovals} role={membership.role} isPlatformOwner={user.accessStatus === "ACTIVE" && !user.accessUntil && membership.role === "OWNER"} />
+          <SideNav pendingApprovals={pendingApprovals} role={membership.role} isPlatformOwner={(isConfiguredPlatformAdmin(user.email) || !user.accessUntil) && user.accessStatus === "ACTIVE" && membership.role === "OWNER"} />
         </div>
         <div className="rounded-xl border bg-accent/40 p-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -120,7 +121,7 @@ export default async function DashboardLayout({
         <main className="flex-1 px-4 py-8 sm:px-6 lg:px-10">
           {/* Mobile nav */}
           <div className="mb-8 lg:hidden">
-            <SideNav pendingApprovals={pendingApprovals} role={membership.role} isPlatformOwner={user.accessStatus === "ACTIVE" && !user.accessUntil && membership.role === "OWNER"} />
+            <SideNav pendingApprovals={pendingApprovals} role={membership.role} isPlatformOwner={(isConfiguredPlatformAdmin(user.email) || !user.accessUntil) && user.accessStatus === "ACTIVE" && membership.role === "OWNER"} />
           </div>
           {children}
         </main>

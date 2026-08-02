@@ -44,6 +44,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           !user ||
           user.deletedAt !== null ||
           !user.passwordHash ||
+          !user.emailVerified ||
           !(await bcrypt.compare(password, user.passwordHash));
 
         if (invalid) {

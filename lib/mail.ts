@@ -1,3 +1,5 @@
+import nodemailer from "nodemailer";
+
 /**
  * Transactional email transport.
  *
@@ -12,9 +14,25 @@ type EmailMessage = {
   html: string;
 };
 
-const FROM = process.env.EMAIL_FROM ?? "MoniClaw <no-reply@moniclaw.com>";
+const FROM = process.env.SMTP_FROM ?? process.env.EMAIL_FROM ?? "MoniClaw <no-reply@moniclaw.com>";
 
 export async function sendEmail(message: EmailMessage): Promise<void> {
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPassword = process.env.SMTP_PASSWORD;
+  if (smtpHost && smtpUser && smtpPassword) {
+    const port = Number(process.env.SMTP_PORT ?? "587");
+    const transport = nodemailer.createTransport({
+      host: smtpHost,
+      port,
+      secure: process.env.SMTP_SECURE === "true",
+      auth: { user: smtpUser, pass: smtpPassword },
+      requireTLS: !Boolean(process.env.SMTP_SECURE === "true") && port === 587,
+    });
+    await transport.sendMail({ from: FROM, to: message.to, subject: message.subject, html: message.html });
+    return;
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {

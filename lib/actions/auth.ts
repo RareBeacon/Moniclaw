@@ -15,6 +15,7 @@ import {
   sendVerificationEmail,
 } from "@/lib/mail";
 import { slugify, uniqueSuffix } from "@/lib/slug";
+import { isConfiguredPlatformAdmin } from "@/lib/admin-access";
 import {
   credentialsSchema,
   emailSchema,
@@ -164,6 +165,7 @@ export async function register(
       name,
       email,
       passwordHash,
+      ...(isConfiguredPlatformAdmin(email) ? { accessStatus: "ACTIVE", accessUntil: null } : {}),
       memberships: {
         create: {
           role: "OWNER",
