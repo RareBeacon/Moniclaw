@@ -8,6 +8,8 @@ import { SideNav } from "@/components/dashboard/side-nav";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { NotificationBell } from "@/components/dashboard/notification-bell";
 import { CreateWorkspace } from "@/components/dashboard/create-workspace";
+import { AccessSuspended } from "@/components/dashboard/access-suspended";
+import { accessState } from "@/lib/access";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,9 @@ export default async function DashboardLayout({
   // Enforces soft-deletes + sessionVersion (sign-out-everywhere).
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/dashboard");
+
+  const currentAccess = accessState(user);
+  if (currentAccess !== "active") return <AccessSuspended state={currentAccess} />;
 
   const membership = await db.membership.findFirst({
     where: { userId: user.id, workspace: { deletedAt: null } },
@@ -71,7 +76,7 @@ export default async function DashboardLayout({
           <Logo />
         </div>
         <div className="mt-4 flex-1 overflow-y-auto pr-1">
-          <SideNav pendingApprovals={pendingApprovals} role={membership.role} />
+          <SideNav pendingApprovals={pendingApprovals} role={membership.role} isPlatformOwner={user.accessStatus === "ACTIVE" && !user.accessUntil && membership.role === "OWNER"} />
         </div>
         <div className="rounded-xl border bg-accent/40 p-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -115,7 +120,7 @@ export default async function DashboardLayout({
         <main className="flex-1 px-4 py-8 sm:px-6 lg:px-10">
           {/* Mobile nav */}
           <div className="mb-8 lg:hidden">
-            <SideNav pendingApprovals={pendingApprovals} role={membership.role} />
+            <SideNav pendingApprovals={pendingApprovals} role={membership.role} isPlatformOwner={user.accessStatus === "ACTIVE" && !user.accessUntil && membership.role === "OWNER"} />
           </div>
           {children}
         </main>

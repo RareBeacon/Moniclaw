@@ -244,7 +244,7 @@ imports in the orchestrator.
 - **Sales tools in the agent runtime** — read tools (company/contact search,
   pipeline snapshot) plus a guarded `sales_activity_log` mutation; agents
   compose them under the same policy/rate-limit envelopes.
-- **Access gate (optional)** — set `AUTH_REGISTRATION_CODE` and signup
+- **Manual access approval** — open signup creates PENDING accounts; platform Owners approve paid access.
   requires the code (constant-time compare): “only us” mode without touching
   the allowlist code.
 

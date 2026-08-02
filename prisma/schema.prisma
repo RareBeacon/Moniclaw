@@ -25,6 +25,12 @@ datasource db {
 
 // ── Identity (Auth.js) ────────────────────────────────────────────────
 
+enum AccessStatus {
+  ACTIVE
+  PENDING
+  SUSPENDED
+}
+
 model User {
   id             String    @id @default(uuid())
   name           String?
@@ -39,6 +45,10 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
+  // Platform-level manual paid-access gate. Null expiry means no expiry.
+  accessStatus   AccessStatus @default(PENDING)
+  accessUntil    DateTime?
+  accessNote     String?      @db.Text
 
   accounts         Account[]
   sessions         Session[]

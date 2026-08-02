@@ -9,7 +9,6 @@ import { signIn } from "@/auth";
 import { db } from "@/lib/db";
 import { clientIp } from "@/lib/http";
 import { audit } from "@/lib/audit";
-import { safeEqual } from "@/lib/crypto";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import {
   sendPasswordResetEmail,
@@ -125,26 +124,13 @@ export async function register(
     return { error: `Too many accounts created from this network. Try again in ${gate.retryAfterSeconds}s.` };
   }
 
-  // Private-launch gate (Phase-6 release: "only us"). When
-  // AUTH_REGISTRATION_CODE is configured, every new account must present the
-  // shared access code — constant-time compared, checked before ANY work so
-  // nothing about existing accounts is observable. Leave unset for open
-  // registration (development default).
-  const requiredCode = process.env.AUTH_REGISTRATION_CODE;
-  if (requiredCode) {
-    const provided = String(formData.get("accessCode") ?? "").trim();
-    if (!provided || !safeEqual(provided, requiredCode)) {
-      return { error: "MoniClaw is in private launch — enter the access code you were given." };
-    }
-  }
-
   // Private-launch seat cap (Phase 9 — capacity for the first N accounts).
   // Fail closed and honest: when the platform is full, say so up front
   // instead of taking the account and silently degrading later.
   // Unset / non-positive = uncapped (development default).
   const maxUsers = Number(process.env.AUTH_REGISTRATION_MAX_USERS ?? "");
   if (Number.isInteger(maxUsers) && maxUsers > 0) {
-    const seatsTaken = await db.user.count();
+    const seatsTaken = await db.user.count({ where: { deletedAt: null } });
     if (seatsTaken >= maxUsers) {
       return {
         error: `MoniClaw is at capacity — all ${maxUsers} launch seats are taken. Contact the workspace owner to free a seat or raise the limit.`,

@@ -1,0 +1,15 @@
+import { redirect } from "next/navigation";
+import { db } from "@/lib/db";
+import { requirePlatformOwner } from "@/lib/admin-access";
+import { accessState } from "@/lib/access";
+import { AdminUserActions } from "@/components/dashboard/admin-user-actions";
+
+export const dynamic = "force-dynamic";
+export default async function AdminPage() {
+  const actor = await requirePlatformOwner(); if (!actor) redirect("/dashboard");
+  const cap = Number(process.env.AUTH_REGISTRATION_MAX_USERS ?? "20");
+  const [seats, users] = await Promise.all([db.user.count({ where: { deletedAt: null } }), db.user.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "asc" }, include: { memberships: { where: { workspace: { deletedAt: null } }, include: { workspace: true }, take: 1 }, loginEvents: { where: { success: true }, orderBy: { createdAt: "desc" }, take: 1 } } })]);
+  return <div className="mx-auto w-full max-w-7xl space-y-7 p-5 sm:p-8"><header><p className="text-sm font-medium text-primary">Platform administration</p><h1 className="mt-1 text-2xl font-semibold">Access & seats</h1><p className="mt-2 text-sm text-muted-foreground">Manual paid-access controls. Every change is written to the audit ledger.</p></header>
+  <section className="rounded-2xl border bg-card p-5"><p className="text-3xl font-semibold tabular-nums">{seats} <span className="text-base font-normal text-muted-foreground">/ {Number.isFinite(cap) && cap > 0 ? cap : "∞"} seats used</span></p><div className="mt-3 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{width:`${Number.isFinite(cap)&&cap>0?Math.min(100,seats/cap*100):0}%`}} /></div></section>
+  <section className="overflow-x-auto rounded-2xl border bg-card"><table className="w-full min-w-[1000px] text-sm"><thead className="border-b bg-muted/30 text-left text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="p-4">User</th><th className="p-4">Workspace</th><th className="p-4">Status</th><th className="p-4">Access until</th><th className="p-4">Last sign-in</th><th className="p-4 text-right">Actions</th></tr></thead><tbody>{users.map(u=>{const m=u.memberships[0];const state=accessState(u);return <tr key={u.id} className="border-b last:border-0"><td className="p-4"><p className="font-medium">{u.name ?? "—"}</p><p className="text-xs text-muted-foreground">{u.email}</p>{u.accessNote&&<p className="mt-1 max-w-[220px] truncate text-xs text-muted-foreground" title={u.accessNote}>{u.accessNote}</p>}</td><td className="p-4 text-muted-foreground">{m?.workspace.name ?? "—"}</td><td className="p-4"><span className={state==="active"?"text-emerald-700":"text-amber-700"}>{state.toUpperCase()}</span></td><td className="p-4 text-muted-foreground">{u.accessUntil?.toLocaleDateString() ?? "No expiry"}</td><td className="p-4 text-muted-foreground">{u.loginEvents[0]?.createdAt.toLocaleString() ?? "Never"}</td><td className="p-4"><AdminUserActions userId={u.id} status={u.accessStatus} accessUntil={u.accessUntil?.toISOString() ?? null} note={u.accessNote}/></td></tr>})}</tbody></table></section></div>;
+}

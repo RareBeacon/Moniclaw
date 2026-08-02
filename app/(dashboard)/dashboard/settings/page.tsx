@@ -35,7 +35,7 @@ export default async function SettingsPage() {
   // Phase 9 — launch capacity: platform-wide seats vs the configured cap,
   // plus this workspace's headcount. Counts only, no personal data.
   const [seatsTaken, memberCount] = await Promise.all([
-    db.user.count(),
+    db.user.count({ where: { deletedAt: null } }),
     db.membership.count({ where: { workspaceId: workspace.id } }),
   ]);
   const rawCap = Number(process.env.AUTH_REGISTRATION_MAX_USERS ?? "");
@@ -132,7 +132,7 @@ export default async function SettingsPage() {
           </div>
           <div>
             <p className="text-2xl font-semibold tabular-nums">
-              {process.env.AUTH_REGISTRATION_CODE ? "Code-gated" : "Open"}
+              Open
             </p>
             <p className="mt-1 text-xs text-muted-foreground">Registration mode</p>
           </div>

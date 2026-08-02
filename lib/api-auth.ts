@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
 import { can, type Action } from "@/lib/permissions";
 import { getCurrentUser, getPrimaryWorkspace } from "@/lib/workspace";
+import { hasActiveAccess } from "@/lib/access";
 import type { MembershipRole, Workspace } from "@prisma/client";
 
 /**
@@ -20,6 +21,7 @@ export interface ApiPrincipal {
   via: "session" | "api_key";
   scopes: string[];
   apiKeyId?: string;
+  accessSuspended?: boolean;
 }
 
 const sha256 = (input: string) => createHash("sha256").update(input).digest("hex");
@@ -39,13 +41,14 @@ export async function resolveApiPrincipal(request: Request): Promise<ApiPrincipa
     const rawKey = bearer.slice("Bearer ".length).trim();
     const key = await db.apiKey.findUnique({
       where: { keyHash: sha256(rawKey) },
-      include: { workspace: true },
+      include: { workspace: true, createdBy: true },
     });
     if (
       !key ||
       key.revokedAt ||
       key.workspace.deletedAt ||
-      (key.expiresAt && key.expiresAt < new Date())
+      (key.expiresAt && key.expiresAt < new Date()) ||
+      (key.createdBy && !hasActiveAccess(key.createdBy))
     ) {
       return null;
     }
@@ -66,6 +69,7 @@ export async function resolveApiPrincipal(request: Request): Promise<ApiPrincipa
   // Session path
   const user = await getCurrentUser();
   if (!user) return null;
+  if (!hasActiveAccess(user)) return { workspace: null as never, role: "MEMBER", userId: user.id, via: "session", scopes: [], accessSuspended: true };
   const primary = await getPrimaryWorkspace(user.id);
   if (!primary) return null;
   return {
@@ -113,6 +117,9 @@ export function requirePrincipal(
   principal: ApiPrincipal | null,
   action: Action
 ): Response | null {
+  if (principal?.accessSuspended) {
+    return Response.json({ error: "access_suspended", message: "Account access is not active. Contact the owner to renew." }, { status: 403 });
+  }
   if (!principal) {
     return Response.json(
       { error: "unauthenticated", message: "Sign in or pass a valid Bearer API key (msk_...)." },

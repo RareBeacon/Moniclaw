@@ -33,7 +33,7 @@ type FieldErrors = Partial<Record<"name" | "email" | "password" | "terms", strin
 export function SignupForm() {
   const router = useRouter();
   const [state, formAction] = useFormState(register, initialState);
-  const [values, setValues] = React.useState({ name: "", email: "", password: "", accessCode: "" });
+  const [values, setValues] = React.useState({ name: "", email: "", password: "" });
   const [terms, setTerms] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
   const [clientErrors, setClientErrors] = React.useState<FieldErrors>({});
@@ -111,20 +111,6 @@ export function SignupForm() {
           {clientErrors.email && (
             <p role="alert" className="text-xs text-destructive">{clientErrors.email}</p>
           )}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="signup-access-code">
-            Access code <span className="font-normal text-muted-foreground">(private launch — if you were given one)</span>
-          </Label>
-          <Input
-            id="signup-access-code"
-            name="accessCode"
-            autoComplete="off"
-            placeholder="e.g. MONICLAW-…"
-            value={values.accessCode}
-            onChange={set("accessCode")}
-          />
         </div>
 
         <div className="space-y-2">

@@ -33,8 +33,8 @@ import {
   Plug,
   ScrollText,
   Settings,
-  Settings2,
   ShieldCheck,
+  Settings2,
   SlidersHorizontal,
   Store,
   Target,
@@ -146,15 +146,19 @@ const sections: NavSection[] = [
 export function SideNav({
   pendingApprovals = 0,
   role,
+  isPlatformOwner = false,
 }: {
   pendingApprovals?: number;
   role: MembershipRole;
+  isPlatformOwner?: boolean;
 }) {
   const pathname = usePathname();
 
+  const renderedSections = isPlatformOwner ? [...sections, { title: "Platform", items: [{ href: "/dashboard/admin", label: "Access & seats", icon: ShieldCheck, permission: "members.read" as Action }] }] : sections;
+
   return (
     <nav aria-label="Workspace" className="flex flex-col gap-6">
-      {sections.map((section) => {
+      {renderedSections.map((section) => {
         const visible = section.items.filter((item) => can(role, item.permission));
         if (visible.length === 0) return null;
         return (

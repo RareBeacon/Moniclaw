@@ -135,6 +135,13 @@ export const AUDIT_ACTIONS = {
   agentTeamDelete: "agents.team.delete",
   agentTeamRun: "agents.team.run",
 
+  // Owner access management (M8)
+  accessApprove: "access.approve",
+  accessExtend: "access.extend",
+  accessSuspend: "access.suspend",
+  accessReactivate: "access.reactivate",
+  accessDelete: "access.delete",
+
   // Governance (Phase 9)
   auditExport: "audit.export",
 } as const;
