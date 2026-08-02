@@ -19,9 +19,10 @@ import { digestTrace, preambleFor, sourcesFromTrace } from "./research";
 import type {
   AgentQueuePort, AgentRateLimiterPort, AgentRepository, AgentRunCreateInput,
   AgentRunRepository, AgentRunRow, AgentRunStatus, ApprovalBridgePort, AuditSinkPort,
-  ClockPort, PlannerCtx, PlannerPort, RunEventRepository, SynthesizerPort, UsageQueryPort,
+  ClockPort, PlanGatePort, PlannerCtx, PlannerPort, RunEventRepository, SynthesizerPort, UsageQueryPort,
 } from "./ports";
 import { runOutputSchema, type RunOutput, type WorkerBudget } from "./types";
+import { creditsForRun } from "./credits";
 
 export interface OrchestratorDeps {
   agents: AgentRepository;
@@ -43,6 +44,8 @@ export interface OrchestratorDeps {
   }) => PlannerPort;
   /** Workspace AI tool-enablement map (mirrors dashboard AI settings). */
   workspaceToolPermissions: (workspaceId: string) => Promise<Record<string, boolean>>;
+  /** Monthly plan-credit gate (Phase 10) — root dispatches only. */
+  planGate?: PlanGatePort;
 }
 
 export interface DispatchParams {
@@ -104,6 +107,19 @@ export class WorkerOrchestrator implements DelegationHandle {
       throw new AgentError("run_conflict", `Agent "${agent.name}" already has ${active} active run(s) (cap ${budget.maxConcurrentRuns}).`);
     }
     await this.deps.rate.check(`agents-run:${params.workspaceId}`);
+
+    // Monthly plan-credit gate: refuse NEW root runs once the workspace's
+    // metering month is spent. Delegated children are exempt — they draw on
+    // the parent's shared budget and would otherwise double-pay.
+    if (!params.parentRunId && this.deps.planGate) {
+      const verdict = await this.deps.planGate.checkRootDispatch(params.workspaceId);
+      if (!verdict.allowed) {
+        throw new AgentError(
+          "budget_exceeded",
+          verdict.message ?? "This workspace's monthly plan credits are exhausted."
+        );
+      }
+    }
 
     // DRAFT-less statuses still gate mode: SHADOW/DRAFT agents always shadow.
     const mode: "LIVE" | "SHADOW" =
@@ -669,6 +685,13 @@ export class WorkerOrchestrator implements DelegationHandle {
       status, output, error, errorClass,
       stepsExecuted: steps || undefined,
       tokensUsed: tokens,
+      // Metering accrual: one fn prices every terminal run (ZERO for
+      // canceled/pre-work), the plan gate sums the same column.
+      creditsUsed: creditsForRun({
+        stepsExecuted: steps,
+        tokensUsed: tokens ?? run.tokensUsed,
+        status,
+      }),
     });
     if (TERMINAL.includes(status)) {
       await this.deps.agents.incrementRunCount(run.agentId, 1);

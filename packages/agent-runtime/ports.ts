@@ -80,6 +80,8 @@ export interface RunFinishPatch {
   errorClass?: string | null;
   tokensUsed?: number;
   stepsExecuted?: number;
+  /** Worker credits charged for this run (accrual fn: creditsForRun). */
+  creditsUsed?: number;
 }
 
 export interface RunEventRow {
@@ -144,6 +146,23 @@ export interface AgentRunRepository {
 export interface RunEventRepository {
   append(input: { runId: string; type: string; message: string; payload?: unknown }): Promise<RunEventRow>;
   list(runId: string, opts?: { afterTs?: Date; limit?: number }): Promise<RunEventRow[]>;
+}
+
+// ── Metering (Phase 10) ─────────────────────────────────────────────────
+
+export interface PlanGateVerdict {
+  allowed: boolean;
+  /** Honest operator-facing reason when a dispatch is refused. */
+  message?: string;
+}
+
+/**
+ * Monthly plan-credit gate. Consulted for ROOT dispatches only — delegated
+ * children draw from the parent's shared budget and must not double-pay.
+ * Optional so embedders without plan metering keep working unchanged.
+ */
+export interface PlanGatePort {
+  checkRootDispatch(workspaceId: string): Promise<PlanGateVerdict>;
 }
 
 // ── Service ports ───────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ import {
 import { waitUntil } from "@vercel/functions";
 
 import { db } from "@/lib/db";
+import { currentBillingPeriod, planGateDecision } from "@/lib/billing";
 import { audit, type AuditAction } from "@/lib/audit";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { getRuntime } from "@/lib/ai/runtime";
@@ -152,6 +153,25 @@ export function getAgentRuntime(): AgentRuntimeBundle {
     workspaceToolPermissions: async (workspaceId) => {
       const settings = await db.aiWorkspaceSettings.findUnique({ where: { workspaceId } });
       return (settings?.toolPermissions ?? {}) as Record<string, boolean>;
+    },
+    // Phase 10 metering: root dispatches pay from the plan's monthly pool.
+    planGate: {
+      async checkRootDispatch(workspaceId) {
+        const ws = await db.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { plan: true },
+        });
+        const { start } = currentBillingPeriod();
+        const used =
+          (
+            await db.agentRun.aggregate({
+              where: { workspaceId, createdAt: { gte: start } },
+              _sum: { creditsUsed: true },
+            })
+          )._sum.creditsUsed ?? 0;
+        const verdict = planGateDecision(used, ws?.plan ?? "DUO");
+        return { allowed: verdict.allowed, message: verdict.message ?? undefined };
+      },
     },
   });
 

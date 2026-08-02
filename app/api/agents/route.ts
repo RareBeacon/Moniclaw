@@ -1,8 +1,9 @@
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { getAgentRuntime } from "@/lib/agents/runtime";
-import { errorResponse, guard, isGuarded, ok, readJson } from "@/lib/agents/api";
+import { errorResponse, fail, guard, isGuarded, ok, readJson } from "@/lib/agents/api";
 import { agentCreateApiSchema } from "@/lib/validations/agents";
+import { PLAN_LIMITS } from "@/lib/billing";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,21 @@ export async function POST(request: Request) {
   const g = await guard(request, "agents.create");
   if (isGuarded(g)) return g.response;
   try {
+    // Phase 10: plans cap live worker definitions (archived ones free the slot).
+    const cap = PLAN_LIMITS[g.principal.workspace.plan]?.agents ?? null;
+    if (cap != null) {
+      const live = await db.agent.count({
+        where: { workspaceId: g.principal.workspace.id, status: { not: "ARCHIVED" } },
+      });
+      if (live >= cap) {
+        return fail(
+          402,
+          "plan_limit",
+          `The ${PLAN_LIMITS[g.principal.workspace.plan].label} plan allows ${cap} live agents (${live} in use). Archive one or move to a bigger plan on the Billing page.`
+        );
+      }
+    }
+
     const parsed = agentCreateApiSchema.parse(await readJson(request));
     const baseSlug = parsed.slug ?? slugify(parsed.name);
 

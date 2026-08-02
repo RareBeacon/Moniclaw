@@ -430,6 +430,50 @@ async function main() {
     report(del.status === 200 && del.body.ok, "team deleted");
     const runAfter = await db.agentRun.findUnique({ where: { id: teamRun.body.data!.run.id }, select: { id: true, teamId: true } });
     report(!!runAfter && runAfter.teamId === null, "run evidence preserved after team delete (teamId → NULL)");
+
+    console.log("\nplan metering & monthly credit gate (Phase 10):");
+    // Launch cohort lives on the Duo plan (migration backfill + new default).
+    const wsRow = await db.workspace.findUnique({ where: { id: workspace.id }, select: { plan: true } });
+    report(wsRow?.plan === "DUO", "launch-workspace plan is Duo", wsRow?.plan ?? "?");
+
+    // Accrual: the financial column is stamped by the real finish path —
+    // recompute expectations from the run's own numbers (creditsForRun).
+    const latest = await db.agentRun.findFirst({
+      where: { workspaceId: workspace.id, status: { in: ["SUCCEEDED", "FAILED"] } },
+      orderBy: { finishedAt: "desc" },
+    });
+    const didWork = latest ? latest.stepsExecuted > 0 || (latest.tokensUsed ?? 0) > 0 : false;
+    const expectedCredits = latest ? (didWork ? Math.max(1, Math.ceil((latest.tokensUsed ?? 0) / 1000)) : 0) : -1;
+    report(
+      !!latest && latest.creditsUsed === expectedCredits,
+      "terminal runs accrue credits via the finish path",
+      latest ? `${latest.creditsUsed}cr (${latest.status}, ${latest.stepsExecuted} steps, ${latest.tokensUsed} tok)` : "no terminal run"
+    );
+
+    // Enforcement: fabricate a spent metering month, expect an honest 402,
+    // then prove the gate re-opens when the ledger frees up.
+    const spent = await db.agentRun.create({
+      data: {
+        agentId,
+        workspaceId: workspace.id,
+        mode: "LIVE",
+        status: "SUCCEEDED",
+        triggerSource: "manual",
+        stepsExecuted: 1,
+        creditsUsed: 5000,
+        finishedAt: new Date(),
+      },
+    });
+    const gated = await api(owner, "POST", `/api/agents/${agentId}/dispatch`, { idempotencyKey: `gated-${stamp}` });
+    report(
+      gated.status === 402 && !gated.body.ok && gated.body.error === "budget_exceeded" &&
+        /monthly worker credits|monthly plan credits/.test(gated.body.message),
+      "spent month → root dispatch refused with honest 402",
+      `→ ${gated.status} ${gated.body.ok ? "" : (gated.body.message ?? "").slice(0, 80)}`
+    );
+    await db.agentRun.delete({ where: { id: spent.id } });
+    const reopened = await api(owner, "POST", `/api/agents/${agentId}/dispatch`, { idempotencyKey: `reopen-${stamp}` });
+    report(reopened.status === 202 && reopened.body.ok, "gate re-opens when the month has headroom", `→ ${reopened.status}`);
   } finally {
     if (workspaceId) {
       await db.auditLog.deleteMany({ where: { workspaceId } });

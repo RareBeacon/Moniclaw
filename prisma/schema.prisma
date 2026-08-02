@@ -134,6 +134,8 @@ enum WorkspacePlan {
   GROWTH
   BUSINESS
   ENTERPRISE
+  // Private-launch plan (two founders + 20-seat cohort)
+  DUO
 }
 
 // RBAC roles — capabilities are defined in lib/permissions.ts (the single
@@ -150,7 +152,7 @@ model Workspace {
   id         String        @id @default(uuid())
   name       String
   slug       String        @unique
-  plan       WorkspacePlan @default(STARTER)
+  plan       WorkspacePlan @default(DUO)
   // Branding: a preset from the approved palette (violet | indigo | blue |
   // emerald | amber | rose). Rendered on workspace chrome + invitations.
   brandColor String        @default("violet")
