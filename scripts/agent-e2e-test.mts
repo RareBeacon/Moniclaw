@@ -526,7 +526,7 @@ async function main() {
       owner, "GET", "/api/templates"
     );
     const after = catalogAfter.body.ok
-      ? catalogAfter.data.templates.find((t) => t.slug === pick)
+      ? catalogAfter.body.data.templates.find((t) => t.slug === pick)
       : undefined;
     report(
       !!after && after.installs === before + 1 && after.installedAgentIds.length === 1,
