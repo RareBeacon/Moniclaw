@@ -491,6 +491,55 @@ async function main() {
     await db.agentRun.delete({ where: { id: spent.id } });
     const reopened = await api(owner, "POST", `/api/agents/${agentId}/dispatch`, { idempotencyKey: `reopen-${stamp}` });
     report(reopened.status === 202 && reopened.body.ok, "gate re-opens when the month has headroom", `→ ${reopened.status}`);
+
+    console.log("\ntemplate catalog (Phase 8):");
+    const catalog = await api<{ templates: Array<{ slug: string; name: string; installs: number; official: boolean; installedAgentIds: string[]; manifest: unknown }> }>(
+      owner, "GET", "/api/templates"
+    );
+    report(
+      catalog.status === 200 && catalog.body.ok && catalog.body.data.templates.length >= 8,
+      "catalog serves the first-party set",
+      `${catalog.body.ok ? catalog.body.data.templates.length : 0} templates`
+    );
+    const packaged = catalog.body.ok && catalog.body.data.templates.every(
+      (t) => t.official && t.manifest !== null && typeof t.manifest === "object"
+    );
+    report(!!packaged, "every package is official with its permission manifest exposed");
+
+    const ghost = await api(owner, "POST", "/api/templates/definitely-not-a-template/install");
+    report(ghost.status === 404 && !ghost.body.ok, "installing a phantom slug → honest 404", `→ ${ghost.status}`);
+
+    const pick = "research-prospect-deepdive";
+    const before = catalog.body.ok
+      ? catalog.body.data.templates.find((t) => t.slug === pick)?.installs ?? 0
+      : 0;
+    const install = await api<{ agent: { id: string; slug: string; status: string; templateSlug: string | null } }>(
+      owner, "POST", `/api/templates/${pick}/install`
+    );
+    report(
+      install.status === 201 && install.body.ok && install.body.data.agent.status === "SHADOW" &&
+        install.body.data.agent.templateSlug === pick,
+      "install mints a real SHADOW worker with lineage",
+      `→ ${install.status} ${install.body.ok ? install.body.data.agent.slug : ""}`
+    );
+    const catalogAfter = await api<{ templates: Array<{ slug: string; installs: number; installedAgentIds: string[] }> }>(
+      owner, "GET", "/api/templates"
+    );
+    const after = catalogAfter.body.ok
+      ? catalogAfter.data.templates.find((t) => t.slug === pick)
+      : undefined;
+    report(
+      !!after && after.installs === before + 1 && after.installedAgentIds.length === 1,
+      "install counter + workspace-local install state reflect reality",
+      after ? `${after.installs} installs` : "missing"
+    );
+    // The installed worker is a REAL agent: it can take a dispatch.
+    if (install.body.ok) {
+      const tRun = await api(owner, "POST", `/api/agents/${install.body.data.agent.id}/dispatch`, {
+        idempotencyKey: `tpl-${stamp}`,
+      });
+      report(tRun.status === 202 && tRun.body.ok, "installed worker accepts a dispatch", `→ ${tRun.status}`);
+    }
   } finally {
     if (workspaceId) {
       await db.auditLog.deleteMany({ where: { workspaceId } });

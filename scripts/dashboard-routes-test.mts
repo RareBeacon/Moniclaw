@@ -182,6 +182,7 @@ async function main() {
       ["/dashboard", "Overview"],
       ["/dashboard/agents", "Agents"],
       ["/dashboard/agents/new", "New agent"],
+      ["/dashboard/templates", "Template catalog"],
       ["/dashboard/runs", "Runs"],
       [`/dashboard/runs/${run.id}`, "Run detail"],
       ["/dashboard/approvals", "Approvals"],

@@ -289,6 +289,8 @@ model Agent {
   instructions    String? // operator constraints above the worker's own judgment
   toolPolicy      Json        @default("{}") // {allow?: string[], deny?: string[], allowDelegation?: bool}
   budget          Json        @default("{}") // {maxSteps, maxTokens, maxCostMicros, maxDurationMs, maxConcurrentRuns, maxDepth}
+  // Phase 8 · install lineage (template slug, if installed from the catalog)
+  templateSlug    String?
   lastScheduledAt DateTime? // last cron dispatch (schedule due-evaluation)
   runCount        Int         @default(0)
   createdAt       DateTime    @default(now())
@@ -644,6 +646,31 @@ model AiProviderConfig {
   @@unique([workspaceId, label])
   @@index([workspaceId, enabled, priority])
   @@map("ai_provider_configs")
+}
+
+/**
+ * Phase 8 · Template catalog — platform-global, curated declarative worker
+ * packages (goal, instructions, tool policy, budget). v1 ships first-party
+ * packages only; install mints a real workspace Agent from the manifest.
+ */
+model AgentTemplate {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  summary     String
+  description String
+  category    String
+  workerType  String   @default("general")
+  icon        String?  // lucide key for the catalog card
+  version     String   @default("1.0.0")
+  publisher   String   @default("MoniClaw")
+  official    Boolean  @default(true)
+  manifest    Json     // { goal, instructions, skills, toolPolicy, budget, trigger, schedule, status }
+  installs    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("agent_templates")
 }
 
 /**

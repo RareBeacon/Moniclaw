@@ -12,6 +12,7 @@
 
 import { SalesClient } from "./sales";
 import { AgentsClient } from "./agents";
+import { TemplatesClient } from "./templates";
 
 export interface MoniClawClientOptions {
   /** Base URL of the deployment (no trailing slash). */
@@ -56,6 +57,7 @@ export class MoniClawClient {
   readonly usage: UsageClient;
   readonly sales: SalesClient;
   readonly agents: AgentsClient;
+  readonly templates: TemplatesClient;
 
   readonly baseUrl: string;
   readonly apiKey: string;
@@ -76,6 +78,7 @@ export class MoniClawClient {
     this.usage = new UsageClient(this);
     this.sales = new SalesClient(this);
     this.agents = new AgentsClient(this);
+    this.templates = new TemplatesClient(this);
   }
 
   /** Internal transport — exported for advanced/raw calls. */
